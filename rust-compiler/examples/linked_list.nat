@@ -1,0 +1,100 @@
+// Linked List implementation in Nature language
+
+struct Node {
+    data: i32,
+    next: *Node,
+}
+
+struct LinkedList {
+    head: *Node,
+    size: i32,
+}
+
+fn create_node(data: i32) -> *Node {
+    let node = Node {
+        data: data,
+        next: null,
+    };
+    return &node;
+}
+
+fn create_linked_list() -> LinkedList {
+    return LinkedList {
+        head: null,
+        size: 0,
+    };
+}
+
+fn insert(list: *LinkedList, data: i32) {
+    let new_node = create_node(data);
+    new_node.next = list.head;
+    list.head = new_node;
+    list.size = list.size + 1;
+}
+
+fn delete(list: *LinkedList, data: i32) -> bool {
+    if list.head == null {
+        return false;
+    }
+    
+    if list.head.data == data {
+        list.head = list.head.next;
+        list.size = list.size - 1;
+        return true;
+    }
+    
+    let current = list.head;
+    while current.next != null {
+        if current.next.data == data {
+            current.next = current.next.next;
+            list.size = list.size - 1;
+            return true;
+        }
+        current = current.next;
+    }
+    
+    return false;
+}
+
+fn find(list: *LinkedList, data: i32) -> bool {
+    let current = list.head;
+    while current != null {
+        if current.data == data {
+            return true;
+        }
+        current = current.next;
+    }
+    return false;
+}
+
+fn print_list(list: *LinkedList) {
+    let current = list.head;
+    print("List: ");
+    while current != null {
+        print("{} ", current.data);
+        current = current.next;
+    }
+    println("");
+}
+
+fn main() {
+    let list = create_linked_list();
+    
+    insert(&list, 1);
+    insert(&list, 2);
+    insert(&list, 3);
+    insert(&list, 4);
+    insert(&list, 5);
+    
+    print_list(&list);
+    
+    let found = find(&list, 3);
+    println("Found 3: {}", found);
+    
+    let deleted = delete(&list, 3);
+    println("Deleted 3: {}", deleted);
+    
+    print_list(&list);
+    
+    return 0;
+}

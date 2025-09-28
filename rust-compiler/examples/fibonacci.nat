@@ -1,0 +1,15 @@
+// Fibonacci sequence implementation in Nature language
+
+fn fibonacci(n: i32) -> i32 {
+    if n <= 1 {
+        return n;
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+fn main() {
+    let n = 10;
+    let result = fibonacci(n);
+    println("Fibonacci of {} is {}", n, result);
+    return 0;
+}
