@@ -2,7 +2,8 @@
 
 use crate::ast::*;
 use crate::error::{CompilerError, Location, Result};
-use crate::lexer::{Lexer, Token, TokenWithLocation};
+use crate::lexer::Lexer;
+use crate::lexer::token::{Token, TokenWithLocation};
 use std::collections::VecDeque;
 
 pub mod expr_parser;
@@ -58,6 +59,41 @@ impl Parser {
         }
 
         Ok(Program::new(declarations, self.source_info.clone()))
+    }
+
+    /// Parse a declaration
+    pub fn parse_declaration(&mut self) -> Result<Option<Declaration>> {
+        match self.current.as_ref().map(|t| &t.token) {
+            Some(Token::Fn) => {
+                let func = decl_parser::parse_function_declaration(self)?;
+                Ok(Some(Declaration::Function(func)))
+            }
+            Some(Token::Let) => {
+                let var = decl_parser::parse_variable_declaration(self)?;
+                Ok(Some(Declaration::Variable(var)))
+            }
+            Some(Token::Const) => {
+                let const_ = decl_parser::parse_constant_declaration(self)?;
+                Ok(Some(Declaration::Constant(const_)))
+            }
+            Some(Token::Type) => {
+                let type_ = decl_parser::parse_type_declaration(self)?;
+                Ok(Some(Declaration::Type(type_)))
+            }
+            Some(Token::Struct) => {
+                let struct_ = decl_parser::parse_struct_declaration(self)?;
+                Ok(Some(Declaration::Struct(struct_)))
+            }
+            Some(Token::Interface) => {
+                let interface = decl_parser::parse_interface_declaration(self)?;
+                Ok(Some(Declaration::Interface(interface)))
+            }
+            Some(Token::Import) => {
+                let import = decl_parser::parse_import_declaration(self)?;
+                Ok(Some(Declaration::Import(import)))
+            }
+            _ => Ok(None),
+        }
     }
 
     /// Advance to the next token
@@ -132,7 +168,7 @@ impl Parser {
             self.advance()?;
             Ok(())
         } else {
-            let location = self.current.as_ref().map(|t| t.location).unwrap_or(Location::new(0, 0, 0));
+            let location = self.current.as_ref().map(|t| Location::new(t.line, t.column, t.offset)).unwrap_or(Location::new(0, 0, 0));
             Err(CompilerError::syntax(
                 location.line,
                 location.column,
@@ -146,7 +182,7 @@ impl Parser {
         if let Some(token) = self.consume_any(tokens)? {
             Ok(token)
         } else {
-            let location = self.current.as_ref().map(|t| t.location).unwrap_or(Location::new(0, 0, 0));
+            let location = self.current.as_ref().map(|t| Location::new(t.line, t.column, t.offset)).unwrap_or(Location::new(0, 0, 0));
             let expected = tokens.iter().map(|t| format!("{:?}", t)).collect::<Vec<_>>().join(" or ");
             Err(CompilerError::syntax(
                 location.line,
@@ -158,7 +194,7 @@ impl Parser {
 
     /// Get the current token's location
     fn current_location(&self) -> Location {
-        self.current.as_ref().map(|t| t.location).unwrap_or(Location::new(0, 0, 0))
+        self.current.as_ref().map(|t| Location::new(t.line, t.column, t.offset)).unwrap_or(Location::new(0, 0, 0))
     }
 
     /// Synchronize the parser after an error
@@ -308,7 +344,7 @@ fn parse_statement(parser: &mut Parser) -> Result<Option<crate::ast::stmt::State
             }
             Token::Select => {
                 let stmt = parse_select_statement(parser)?;
-                Ok(Some(crate::ast::stmt::Statement::Select(stmt)))
+                Ok(Some(crate::ast::stmt::Statement::Select(Box::new(stmt))))
             }
             Token::Go => {
                 let stmt = parse_go_statement(parser)?;

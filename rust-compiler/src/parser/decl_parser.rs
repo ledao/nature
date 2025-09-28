@@ -3,7 +3,7 @@
 use crate::ast::decl::*;
 use crate::ast::types::Type;
 use crate::error::{CompilerError, Result};
-use crate::lexer::Token;
+use crate::lexer::token::Token;
 use super::{Parser, parse_expression, parse_type};
 
 /// Parse a declaration
@@ -49,7 +49,7 @@ pub fn parse_declaration(parser: &mut Parser) -> Result<Option<Declaration>> {
 }
 
 /// Parse function declaration
-pub fn parse_function_declaration(parser: &mut Parser) -> Result<FunctionDecl> {
+pub fn parse_function_declaration(parser: &mut Parser) -> Result<crate::ast::FunctionDecl> {
     parser.expect(&Token::Fn)?;
     
     if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
@@ -131,7 +131,7 @@ pub fn parse_function_declaration(parser: &mut Parser) -> Result<FunctionDecl> {
                         None
                     };
                     
-                    parameters.push(Parameter {
+                    parameters.push(crate::ast::types::Parameter {
                         name,
                         param_type: param_type.unwrap(),
                         default_value,
@@ -164,7 +164,7 @@ pub fn parse_function_declaration(parser: &mut Parser) -> Result<FunctionDecl> {
         // Parse attributes
         let attributes = parse_attributes(parser)?;
         
-        Ok(FunctionDecl {
+        Ok(crate::ast::FunctionDecl {
             name: func_name,
             generics,
             parameters,
@@ -380,7 +380,7 @@ pub fn parse_struct_declaration(parser: &mut Parser) -> Result<StructDecl> {
                     None
                 };
                 
-                fields.push(StructField {
+                fields.push(crate::ast::StructField {
                     name,
                     field_type: field_type.unwrap(),
                     default_value,
@@ -612,7 +612,7 @@ fn parse_method_declaration(parser: &mut Parser) -> Result<Option<FunctionDecl>>
                         ));
                     }
                     
-                    parameters.push(Parameter {
+                    parameters.push(crate::ast::types::Parameter {
                         name,
                         param_type: param_type.unwrap(),
                         default_value: None,
@@ -682,7 +682,7 @@ fn parse_interface_method(parser: &mut Parser) -> Result<Option<InterfaceMethod>
                         ));
                     }
                     
-                    parameters.push(Parameter {
+                    parameters.push(crate::ast::types::Parameter {
                         name,
                         param_type: param_type.unwrap(),
                         default_value: None,
@@ -719,7 +719,7 @@ fn parse_interface_method(parser: &mut Parser) -> Result<Option<InterfaceMethod>
 }
 
 /// Parse block
-fn parse_block(parser: &mut Parser) -> Result<Block> {
+fn parse_block(parser: &mut Parser) -> Result<crate::ast::Block> {
     parser.expect(&Token::LeftBrace)?;
     
     let mut statements = Vec::new();
@@ -734,7 +734,7 @@ fn parse_block(parser: &mut Parser) -> Result<Block> {
     
     parser.expect(&Token::RightBrace)?;
     
-    Ok(Block {
+    Ok(crate::ast::Block {
         statements,
         location: parser.current_location(),
     })

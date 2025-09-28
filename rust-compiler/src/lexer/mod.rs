@@ -47,16 +47,7 @@ impl Lexer {
         let mut lexer = Token::lexer(&self.source[self.position..]);
         
         match lexer.next() {
-            Some(Token::Error) => {
-                let location = Location::new(self.line, self.column, self.position);
-                Err(CompilerError::lexical(
-                    self.line,
-                    self.column,
-                    format!("Unexpected character: '{}'", 
-                        self.source.chars().nth(self.position).unwrap_or('?')),
-                ))
-            }
-            Some(token) => {
+            Some(Ok(token)) => {
                 let token_with_location = TokenWithLocation::new(
                     token.clone(),
                     self.line,
@@ -69,6 +60,14 @@ impl Lexer {
                 self.update_position(&token);
 
                 Ok(Some(token_with_location))
+            }
+            Some(Err(_)) => {
+                Err(CompilerError::lexical(
+                    self.line,
+                    self.column,
+                    format!("Unexpected character: '{}'", 
+                        self.source.chars().nth(self.position).unwrap_or('?')),
+                ))
             }
             None => Ok(None),
         }
@@ -159,6 +158,18 @@ impl<'a> Iterator for TokenIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.lexer.next_token() {
+            Ok(Some(token)) => Some(Ok(token)),
+            Ok(None) => None,
+            Err(err) => Some(Err(err)),
+        }
+    }
+}
+
+impl Iterator for Lexer {
+    type Item = Result<TokenWithLocation>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.next_token() {
             Ok(Some(token)) => Some(Ok(token)),
             Ok(None) => None,
             Err(err) => Some(Err(err)),

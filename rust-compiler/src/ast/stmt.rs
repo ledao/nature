@@ -34,7 +34,7 @@ pub enum Statement {
     /// Throw statement
     Throw(ThrowStmt),
     /// Select statement
-    Select(SelectStmt),
+    Select(Box<SelectStmt>),
     /// Go statement (goroutine)
     Go(GoStmt),
     /// Block statement
@@ -271,7 +271,7 @@ pub struct SelectStmt {
     /// Select cases
     pub cases: Vec<SelectCaseStmt>,
     /// Default case (if any)
-    pub default_case: Option<Statement>,
+    pub default_case: Option<Box<Statement>>,
     /// Location in source
     pub location: Location,
 }

@@ -32,11 +32,11 @@ pub struct FunctionDecl {
     /// Generic type parameters
     pub generics: Vec<GenericParam>,
     /// Function parameters
-    pub parameters: Vec<Parameter>,
+    pub parameters: Vec<crate::ast::types::Parameter>,
     /// Return type
     pub return_type: Option<Type>,
     /// Function body
-    pub body: Option<Block>,
+    pub body: Option<crate::ast::Block>,
     /// Function attributes
     pub attributes: Vec<Attribute>,
     /// Location in source
@@ -54,18 +54,6 @@ pub struct GenericParam {
     pub location: Location,
 }
 
-/// Function parameter
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Parameter {
-    /// Parameter name
-    pub name: String,
-    /// Parameter type
-    pub param_type: Type,
-    /// Default value (if any)
-    pub default_value: Option<Expression>,
-    /// Location in source
-    pub location: Location,
-}
 
 /// Variable declaration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,25 +102,13 @@ pub struct StructDecl {
     /// Generic type parameters
     pub generics: Vec<GenericParam>,
     /// Struct fields
-    pub fields: Vec<StructField>,
+    pub fields: Vec<crate::ast::StructField>,
     /// Struct methods
     pub methods: Vec<FunctionDecl>,
     /// Location in source
     pub location: Location,
 }
 
-/// Struct field
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StructField {
-    /// Field name
-    pub name: String,
-    /// Field type
-    pub field_type: Type,
-    /// Default value (if any)
-    pub default_value: Option<Expression>,
-    /// Location in source
-    pub location: Location,
-}
 
 /// Interface declaration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -153,7 +129,7 @@ pub struct InterfaceMethod {
     /// Method name
     pub name: String,
     /// Method parameters
-    pub parameters: Vec<Parameter>,
+    pub parameters: Vec<crate::ast::types::Parameter>,
     /// Return type
     pub return_type: Option<Type>,
     /// Location in source
@@ -184,14 +160,6 @@ pub struct Attribute {
     pub location: Location,
 }
 
-/// Block of statements
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Block {
-    /// Statements in the block
-    pub statements: Vec<crate::ast::stmt::Statement>,
-    /// Location in source
-    pub location: Location,
-}
 
 impl Declaration {
     /// Get the location of this declaration
@@ -249,7 +217,7 @@ impl FunctionDecl {
 
 impl StructDecl {
     /// Get a field by name
-    pub fn get_field(&self, name: &str) -> Option<&StructField> {
+    pub fn get_field(&self, name: &str) -> Option<&crate::ast::StructField> {
         self.fields.iter().find(|field| field.name == name)
     }
 

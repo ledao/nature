@@ -459,7 +459,7 @@ pub struct SelectExpr {
     /// Select cases
     pub cases: Vec<SelectCase>,
     /// Default case (if any)
-    pub default_case: Option<Expression>,
+    pub default_case: Option<Box<Expression>>,
     /// Location in source
     pub location: Location,
 }

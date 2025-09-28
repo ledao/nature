@@ -14,6 +14,10 @@ pub use stmt::*;
 pub use decl::*;
 pub use types::*;
 
+// Re-export specific types to avoid ambiguity
+pub use types::Parameter as DeclParameter;
+pub use types::Parameter as TypeParameter;
+
 /// A complete Nature program
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Program {
@@ -51,102 +55,6 @@ pub enum Declaration {
     Import(ImportDecl),
 }
 
-/// Function declaration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FunctionDecl {
-    /// Function name
-    pub name: String,
-    /// Generic type parameters
-    pub generics: Vec<GenericParam>,
-    /// Function parameters
-    pub parameters: Vec<Parameter>,
-    /// Return type
-    pub return_type: Option<Type>,
-    /// Function body
-    pub body: Option<Block>,
-    /// Function attributes
-    pub attributes: Vec<Attribute>,
-    /// Location in source
-    pub location: Location,
-}
-
-/// Generic type parameter
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GenericParam {
-    /// Parameter name
-    pub name: String,
-    /// Type constraints
-    pub constraints: Vec<Type>,
-    /// Location in source
-    pub location: Location,
-}
-
-/// Function parameter
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Parameter {
-    /// Parameter name
-    pub name: String,
-    /// Parameter type
-    pub param_type: Type,
-    /// Default value (if any)
-    pub default_value: Option<Expression>,
-    /// Location in source
-    pub location: Location,
-}
-
-/// Variable declaration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VariableDecl {
-    /// Variable name
-    pub name: String,
-    /// Variable type (if specified)
-    pub var_type: Option<Type>,
-    /// Initial value
-    pub initializer: Option<Expression>,
-    /// Is mutable
-    pub mutable: bool,
-    /// Location in source
-    pub location: Location,
-}
-
-/// Constant declaration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConstantDecl {
-    /// Constant name
-    pub name: String,
-    /// Constant type (if specified)
-    pub const_type: Option<Type>,
-    /// Constant value
-    pub value: Expression,
-    /// Location in source
-    pub location: Location,
-}
-
-/// Type declaration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TypeDecl {
-    /// Type name
-    pub name: String,
-    /// Type definition
-    pub type_def: Type,
-    /// Location in source
-    pub location: Location,
-}
-
-/// Struct declaration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StructDecl {
-    /// Struct name
-    pub name: String,
-    /// Generic type parameters
-    pub generics: Vec<GenericParam>,
-    /// Struct fields
-    pub fields: Vec<StructField>,
-    /// Struct methods
-    pub methods: Vec<FunctionDecl>,
-    /// Location in source
-    pub location: Location,
-}
 
 /// Struct field
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,44 +69,6 @@ pub struct StructField {
     pub location: Location,
 }
 
-/// Interface declaration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InterfaceDecl {
-    /// Interface name
-    pub name: String,
-    /// Generic type parameters
-    pub generics: Vec<GenericParam>,
-    /// Interface methods
-    pub methods: Vec<InterfaceMethod>,
-    /// Location in source
-    pub location: Location,
-}
-
-/// Interface method
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InterfaceMethod {
-    /// Method name
-    pub name: String,
-    /// Method parameters
-    pub parameters: Vec<Parameter>,
-    /// Return type
-    pub return_type: Option<Type>,
-    /// Location in source
-    pub location: Location,
-}
-
-/// Import declaration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImportDecl {
-    /// Import path
-    pub path: String,
-    /// Imported items (if specific imports)
-    pub items: Option<Vec<String>>,
-    /// Alias (if renamed)
-    pub alias: Option<String>,
-    /// Location in source
-    pub location: Location,
-}
 
 /// Function or method attribute
 #[derive(Debug, Clone, Serialize, Deserialize)]

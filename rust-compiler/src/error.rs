@@ -2,6 +2,7 @@
 
 use std::fmt;
 use thiserror::Error;
+use serde::{Serialize, Deserialize};
 
 /// Result type alias for compiler operations
 pub type Result<T> = std::result::Result<T, CompilerError>;
@@ -67,7 +68,7 @@ pub enum CompilerError {
 }
 
 /// Source location information
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Location {
     pub line: usize,
     pub column: usize,

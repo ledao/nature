@@ -11,9 +11,9 @@ pub enum Token {
     True,
     #[token("false")]
     False,
-    #[regex(r"[0-9]+", |lex| lex.slice().parse())]
+    #[regex(r"[0-9]+", |lex| lex.slice().parse::<i64>().unwrap_or(0))]
     Integer(i64),
-    #[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().parse())]
+    #[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().parse::<f64>().unwrap_or(0.0))]
     Float(f64),
     #[regex(r#""([^"\\]|\\.)*""#, |lex| lex.slice()[1..lex.slice().len()-1].to_string())]
     String(String),
@@ -23,6 +23,8 @@ pub enum Token {
     // Keywords
     #[token("fn")]
     Fn,
+    #[token("let")]
+    Let,
     #[token("var")]
     Var,
     #[token("const")]
@@ -205,18 +207,27 @@ pub enum Token {
     Arrow,
     #[token("?")]
     Question,
-    #[token("!")]
-    Bang,
 
     // Special tokens
     #[token("_")]
     Underscore,
 
+    // Additional tokens
+    #[token("default")]
+    Default,
+    #[token("in")]
+    In,
+    #[token("@")]
+    At,
+    #[token("chan")]
+    Chan,
+    #[token("mut")]
+    Mut,
+
     // Comments and whitespace (ignored)
     #[regex(r"//[^\n]*", logos::skip)]
     #[regex(r"/\*([^*]|\*[^/])*\*/", logos::skip)]
     #[regex(r"[ \t\n\r]+", logos::skip)]
-    #[error]
     Error,
 }
 
@@ -284,7 +295,7 @@ impl fmt::Display for Token {
             Token::Dot => write!(f, "."),
             Token::Arrow => write!(f, "->"),
             Token::Question => write!(f, "?"),
-            Token::Bang => write!(f, "!"),
+            Token::Not => write!(f, "!"),
             Token::Underscore => write!(f, "_"),
             Token::Error => write!(f, "<error>"),
             _ => write!(f, "{:?}", self),

@@ -132,6 +132,21 @@ pub enum Symbol {
     Import(ImportSymbol),
 }
 
+impl Symbol {
+    /// Get the location of the symbol
+    pub fn location(&self) -> crate::error::Location {
+        match self {
+            Symbol::Function(sym) => sym.declaration.location,
+            Symbol::Variable(sym) => sym.declaration.location,
+            Symbol::Constant(sym) => sym.declaration.location,
+            Symbol::Type(sym) => sym.declaration.location,
+            Symbol::Struct(sym) => sym.declaration.location,
+            Symbol::Interface(sym) => sym.declaration.location,
+            Symbol::Import(sym) => sym.declaration.location,
+        }
+    }
+}
+
 /// Function symbol
 #[derive(Debug, Clone)]
 pub struct FunctionSymbol {

@@ -274,10 +274,12 @@ impl GenericChecker {
             }
             crate::ast::stmt::AssignmentTarget::FieldAccess(field_access) => {
                 self.check_expression(&field_access.object)?;
+                Ok(())
             }
             crate::ast::stmt::AssignmentTarget::IndexAccess(index_access) => {
                 self.check_expression(&index_access.object)?;
                 self.check_expression(&index_access.index)?;
+                Ok(())
             }
         }
     }

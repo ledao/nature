@@ -1,9 +1,10 @@
 //! Statement parser for Nature language
 
 use crate::ast::stmt::*;
+use crate::ast::expr::Expression;
 use crate::ast::types::Type;
 use crate::error::{CompilerError, Result};
-use crate::lexer::Token;
+use crate::lexer::token::Token;
 use super::{Parser, parse_expression, parse_type};
 
 /// Parse a statement
@@ -71,7 +72,7 @@ pub fn parse_statement(parser: &mut Parser) -> Result<Option<Statement>> {
             }
             Token::Select => {
                 let stmt = parse_select_statement(parser)?;
-                Ok(Some(Statement::Select(stmt)))
+                Ok(Some(Statement::Select(Box::new(stmt))))
             }
             Token::Go => {
                 let stmt = parse_go_statement(parser)?;
@@ -95,7 +96,7 @@ pub fn parse_statement(parser: &mut Parser) -> Result<Option<Statement>> {
 }
 
 /// Parse variable declaration statement
-fn parse_variable_declaration(parser: &mut Parser) -> Result<super::decl_parser::VariableDecl> {
+fn parse_variable_declaration(parser: &mut Parser) -> Result<crate::ast::decl::VariableDecl> {
     parser.expect(&Token::Var)?;
     
     if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
@@ -116,7 +117,7 @@ fn parse_variable_declaration(parser: &mut Parser) -> Result<super::decl_parser:
         
         parser.expect(&Token::Semicolon)?;
         
-        Ok(super::decl_parser::VariableDecl {
+        Ok(crate::ast::decl::VariableDecl {
             name: var_name,
             var_type,
             initializer,
@@ -133,7 +134,7 @@ fn parse_variable_declaration(parser: &mut Parser) -> Result<super::decl_parser:
 }
 
 /// Parse constant declaration statement
-fn parse_constant_declaration(parser: &mut Parser) -> Result<super::decl_parser::ConstantDecl> {
+fn parse_constant_declaration(parser: &mut Parser) -> Result<crate::ast::decl::ConstantDecl> {
     parser.expect(&Token::Const)?;
     
     if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
@@ -159,7 +160,7 @@ fn parse_constant_declaration(parser: &mut Parser) -> Result<super::decl_parser:
         
         parser.expect(&Token::Semicolon)?;
         
-        Ok(super::decl_parser::ConstantDecl {
+        Ok(crate::ast::decl::ConstantDecl {
             name: const_name,
             const_type,
             value: value.unwrap(),
@@ -175,7 +176,7 @@ fn parse_constant_declaration(parser: &mut Parser) -> Result<super::decl_parser:
 }
 
 /// Parse if statement
-fn parse_if_statement(parser: &mut Parser) -> Result<IfStmt> {
+pub fn parse_if_statement(parser: &mut Parser) -> Result<IfStmt> {
     parser.expect(&Token::If)?;
     
     let condition = parse_expression(parser)?;
@@ -211,7 +212,7 @@ fn parse_if_statement(parser: &mut Parser) -> Result<IfStmt> {
 }
 
 /// Parse for statement
-fn parse_for_statement(parser: &mut Parser) -> Result<ForStmt> {
+pub fn parse_for_statement(parser: &mut Parser) -> Result<ForStmt> {
     parser.expect(&Token::For)?;
     
     if let Some(Token::Identifier(var_name)) = parser.peek().map(|t| &t.token) {
@@ -253,7 +254,7 @@ fn parse_for_statement(parser: &mut Parser) -> Result<ForStmt> {
 }
 
 /// Parse while statement
-fn parse_while_statement(parser: &mut Parser) -> Result<WhileStmt> {
+pub fn parse_while_statement(parser: &mut Parser) -> Result<WhileStmt> {
     parser.expect(&Token::While)?;
     
     let condition = parse_expression(parser)?;
@@ -282,7 +283,7 @@ fn parse_while_statement(parser: &mut Parser) -> Result<WhileStmt> {
 }
 
 /// Parse match statement
-fn parse_match_statement(parser: &mut Parser) -> Result<MatchStmt> {
+pub fn parse_match_statement(parser: &mut Parser) -> Result<MatchStmt> {
     parser.expect(&Token::Match)?;
     
     let expr = parse_expression(parser)?;
@@ -338,7 +339,7 @@ fn parse_match_statement(parser: &mut Parser) -> Result<MatchStmt> {
 }
 
 /// Parse return statement
-fn parse_return_statement(parser: &mut Parser) -> Result<ReturnStmt> {
+pub fn parse_return_statement(parser: &mut Parser) -> Result<ReturnStmt> {
     parser.expect(&Token::Return)?;
     
     let value = if !parser.check(&Token::Semicolon) {
@@ -356,7 +357,7 @@ fn parse_return_statement(parser: &mut Parser) -> Result<ReturnStmt> {
 }
 
 /// Parse break statement
-fn parse_break_statement(parser: &mut Parser) -> Result<BreakStmt> {
+pub fn parse_break_statement(parser: &mut Parser) -> Result<BreakStmt> {
     parser.expect(&Token::Break)?;
     
     let label = if let Some(Token::Identifier(label_name)) = parser.peek().map(|t| &t.token) {
@@ -376,7 +377,7 @@ fn parse_break_statement(parser: &mut Parser) -> Result<BreakStmt> {
 }
 
 /// Parse continue statement
-fn parse_continue_statement(parser: &mut Parser) -> Result<ContinueStmt> {
+pub fn parse_continue_statement(parser: &mut Parser) -> Result<ContinueStmt> {
     parser.expect(&Token::Continue)?;
     
     let label = if let Some(Token::Identifier(label_name)) = parser.peek().map(|t| &t.token) {
@@ -396,7 +397,7 @@ fn parse_continue_statement(parser: &mut Parser) -> Result<ContinueStmt> {
 }
 
 /// Parse try statement
-fn parse_try_statement(parser: &mut Parser) -> Result<TryStmt> {
+pub fn parse_try_statement(parser: &mut Parser) -> Result<TryStmt> {
     parser.expect(&Token::Try)?;
     
     let try_block = parse_statement(parser)?;
@@ -445,7 +446,7 @@ fn parse_try_statement(parser: &mut Parser) -> Result<TryStmt> {
 }
 
 /// Parse throw statement
-fn parse_throw_statement(parser: &mut Parser) -> Result<ThrowStmt> {
+pub fn parse_throw_statement(parser: &mut Parser) -> Result<ThrowStmt> {
     parser.expect(&Token::Throw)?;
     
     let exception = parse_expression(parser)?;
@@ -466,7 +467,7 @@ fn parse_throw_statement(parser: &mut Parser) -> Result<ThrowStmt> {
 }
 
 /// Parse select statement
-fn parse_select_statement(parser: &mut Parser) -> Result<SelectStmt> {
+pub fn parse_select_statement(parser: &mut Parser) -> Result<SelectStmt> {
     parser.expect(&Token::Select)?;
     parser.expect(&Token::LeftBrace)?;
     
@@ -505,13 +506,13 @@ fn parse_select_statement(parser: &mut Parser) -> Result<SelectStmt> {
     
     Ok(SelectStmt {
         cases,
-        default_case,
+        default_case: default_case.map(Box::new),
         location: parser.current_location(),
     })
 }
 
 /// Parse go statement
-fn parse_go_statement(parser: &mut Parser) -> Result<GoStmt> {
+pub fn parse_go_statement(parser: &mut Parser) -> Result<GoStmt> {
     parser.expect(&Token::Go)?;
     
     let call = parse_expression(parser)?;
@@ -532,7 +533,7 @@ fn parse_go_statement(parser: &mut Parser) -> Result<GoStmt> {
 }
 
 /// Parse block statement
-fn parse_block_statement(parser: &mut Parser) -> Result<BlockStmt> {
+pub fn parse_block_statement(parser: &mut Parser) -> Result<BlockStmt> {
     parser.expect(&Token::LeftBrace)?;
     
     let mut statements = Vec::new();
@@ -562,20 +563,24 @@ fn parse_pattern(parser: &mut Parser) -> Result<Option<crate::ast::expr::Pattern
     match parser.peek() {
         Some(token) => match &token.token {
             Token::Integer(n) => {
+                let n = *n;
                 parser.advance()?;
-                Ok(Some(crate::ast::expr::Pattern::Literal(crate::ast::expr::Literal::Integer(*n))))
+                Ok(Some(crate::ast::expr::Pattern::Literal(crate::ast::expr::Literal::Integer(n))))
             }
             Token::Float(f) => {
+                let f = *f;
                 parser.advance()?;
-                Ok(Some(crate::ast::expr::Pattern::Literal(crate::ast::expr::Literal::Float(*f))))
+                Ok(Some(crate::ast::expr::Pattern::Literal(crate::ast::expr::Literal::Float(f))))
             }
             Token::String(s) => {
+                let s = s.clone();
                 parser.advance()?;
-                Ok(Some(crate::ast::expr::Pattern::Literal(crate::ast::expr::Literal::String(s.clone()))))
+                Ok(Some(crate::ast::expr::Pattern::Literal(crate::ast::expr::Literal::String(s))))
             }
             Token::Char(c) => {
+                let c = *c;
                 parser.advance()?;
-                Ok(Some(crate::ast::expr::Pattern::Literal(crate::ast::expr::Literal::Char(*c))))
+                Ok(Some(crate::ast::expr::Pattern::Literal(crate::ast::expr::Literal::Char(c))))
             }
             Token::True => {
                 parser.advance()?;
@@ -590,8 +595,9 @@ fn parse_pattern(parser: &mut Parser) -> Result<Option<crate::ast::expr::Pattern
                 Ok(Some(crate::ast::expr::Pattern::Literal(crate::ast::expr::Literal::Null)))
             }
             Token::Identifier(name) => {
+                let name = name.clone();
                 parser.advance()?;
-                Ok(Some(crate::ast::expr::Pattern::Variable(name.clone())))
+                Ok(Some(crate::ast::expr::Pattern::Variable(name)))
             }
             Token::Underscore => {
                 parser.advance()?;

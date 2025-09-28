@@ -2,7 +2,7 @@
 
 use crate::ast::*;
 use crate::error::{CompilerError, Result};
-use super::{LLVMBackend, LLVMType, LLVMFunction};
+use super::{LLVMBackend, LLVMType, LLVMFunction, LLVMBasicBlock};
 
 impl LLVMBackend {
     /// Generate LLVM IR for a function declaration
@@ -57,7 +57,7 @@ impl LLVMBackend {
     }
 
     /// Generate function body
-    fn generate_function_body(&mut self, body: &Block, parameters: &[Parameter]) -> Result<String> {
+    fn generate_function_body(&mut self, body: &crate::ast::Block, parameters: &[crate::ast::types::Parameter]) -> Result<String> {
         let mut ir = String::new();
         
         // Generate entry block

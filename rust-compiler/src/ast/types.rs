@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// All possible types in Nature
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Type {
     /// Basic types
     Basic(BasicType),
@@ -40,7 +40,7 @@ pub enum Type {
 }
 
 /// Basic types
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BasicType {
     /// Integer types
     Int,
@@ -80,7 +80,7 @@ pub enum BasicType {
 }
 
 /// Array/vector type
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ArrayType {
     /// Element type
     pub element_type: Box<Type>,
@@ -91,7 +91,7 @@ pub struct ArrayType {
 }
 
 /// Map type
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MapType {
     /// Key type
     pub key_type: Box<Type>,
@@ -102,7 +102,7 @@ pub struct MapType {
 }
 
 /// Tuple type
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TupleType {
     /// Element types
     pub element_types: Vec<Type>,
@@ -111,7 +111,7 @@ pub struct TupleType {
 }
 
 /// Struct type
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct StructType {
     /// Struct name
     pub name: String,
@@ -122,7 +122,7 @@ pub struct StructType {
 }
 
 /// Interface type
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct InterfaceType {
     /// Interface name
     pub name: String,
@@ -133,7 +133,7 @@ pub struct InterfaceType {
 }
 
 /// Function type
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FunctionType {
     /// Parameter types
     pub parameter_types: Vec<Type>,
@@ -146,7 +146,7 @@ pub struct FunctionType {
 }
 
 /// Pointer type
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PointerType {
     /// Pointee type
     pub pointee_type: Box<Type>,
@@ -157,7 +157,7 @@ pub struct PointerType {
 }
 
 /// Slice type
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SliceType {
     /// Element type
     pub element_type: Box<Type>,
@@ -166,7 +166,7 @@ pub struct SliceType {
 }
 
 /// Channel type
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ChannelType {
     /// Element type
     pub element_type: Box<Type>,
@@ -179,7 +179,7 @@ pub struct ChannelType {
 }
 
 /// Channel direction
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ChannelDirection {
     /// Send only
     Send,
@@ -190,7 +190,7 @@ pub enum ChannelDirection {
 }
 
 /// Optional type (nullable)
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct OptionalType {
     /// Inner type
     pub inner_type: Box<Type>,
@@ -199,7 +199,7 @@ pub struct OptionalType {
 }
 
 /// Error type (errable)
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ErrorType {
     /// Inner type
     pub inner_type: Box<Type>,
@@ -208,7 +208,7 @@ pub struct ErrorType {
 }
 
 /// Union type
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct UnionType {
     /// Union member types
     pub member_types: Vec<Type>,
@@ -217,7 +217,7 @@ pub struct UnionType {
 }
 
 /// Type alias
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AliasType {
     /// Alias name
     pub name: String,

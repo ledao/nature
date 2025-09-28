@@ -11,8 +11,8 @@ categories = ["development-tools::build-utils"]
 
 [dependencies]
 # LLVM bindings
-inkwell = { version = "0.4", features = ["llvm15-0"] }
-llvm-sys = "150"
+inkwell = { version = "0.4", features = ["llvm15-0", "llvm15-0-prefer-dynamic"] }
+llvm-sys = { version = "150", features = ["prefer-dynamic"] }
 
 # Parsing and lexing
 logos = "0.13"
@@ -59,19 +59,11 @@ tempfile = "3.8"
 #criterion = "0.5"
 
 [[bench]]
-name = "lexer_bench"
-harness = false
-
-[[bench]]
-name = "parser_bench"
-harness = false
-
-[[bench]]
-name = "codegen_bench"
+name = "compiler_benchmarks"
 harness = false
 
 [features]
-default = ["llvm-backend"]
+default = []
 llvm-backend = ["inkwell/llvm15-0"]
 cranelift-backend = []  # Future alternative backend
 debug = []  # Debug features

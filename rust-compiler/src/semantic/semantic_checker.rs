@@ -185,7 +185,7 @@ impl SemanticChecker {
     }
 
     /// Check a parameter
-    fn check_parameter(&mut self, param: &Parameter, symbol_table: &SymbolTable) -> Result<()> {
+    fn check_parameter(&mut self, param: &crate::ast::types::Parameter, symbol_table: &SymbolTable) -> Result<()> {
         self.check_type(&param.param_type, symbol_table)?;
         
         if let Some(default_value) = &param.default_value {

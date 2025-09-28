@@ -113,7 +113,10 @@ impl TypeInference {
             declared_type.clone()
         } else if let Some(initializer) = &var.initializer {
             // Infer type from initializer
-            self.infer_expression(initializer, &mut self.environment)?
+            let mut env = std::mem::take(&mut self.environment);
+            let inferred_type = self.infer_expression(initializer, &mut env)?;
+            self.environment = env;
+            inferred_type
         } else {
             return Err(CompilerError::type_error(
                 var.location.line,
@@ -132,7 +135,10 @@ impl TypeInference {
             declared_type.clone()
         } else {
             // Infer type from value
-            self.infer_expression(&const_.value, &mut self.environment)?
+            let mut env = std::mem::take(&mut self.environment);
+            let inferred_type = self.infer_expression(&const_.value, &mut env)?;
+            self.environment = env;
+            inferred_type
         };
 
         self.environment.bind_variable(const_.name.clone(), const_type);
@@ -370,7 +376,7 @@ impl TypeInference {
                 // Infer argument types
                 for (arg, param_type) in call.arguments.iter().zip(func_type.parameter_types.iter()) {
                     let arg_type = self.infer_expression(arg, env)?;
-                    self.add_constraint(arg_type, param_type.clone(), call.location)?;
+                    self.add_constraint(&arg_type, &param_type, call.location)?;
                 }
 
                 // Return function return type
@@ -408,7 +414,7 @@ impl TypeInference {
             crate::ast::expr::BinaryOp::Div |
             crate::ast::expr::BinaryOp::Mod => {
                 // Arithmetic operations
-                self.add_constraint(left_type, right_type, binary.location)?;
+                self.add_constraint(&left_type, &right_type, binary.location)?;
                 Ok(left_type)
             }
             crate::ast::expr::BinaryOp::Equal |
@@ -418,14 +424,14 @@ impl TypeInference {
             crate::ast::expr::BinaryOp::Greater |
             crate::ast::expr::BinaryOp::GreaterEqual => {
                 // Comparison operations
-                self.add_constraint(left_type, right_type, binary.location)?;
+                self.add_constraint(&left_type, &right_type, binary.location)?;
                 Ok(Type::Basic(crate::ast::types::BasicType::Bool))
             }
             crate::ast::expr::BinaryOp::LogicalAnd |
             crate::ast::expr::BinaryOp::LogicalOr => {
                 // Logical operations
-                self.add_constraint(left_type, Type::Basic(crate::ast::types::BasicType::Bool), binary.location)?;
-                self.add_constraint(right_type, Type::Basic(crate::ast::types::BasicType::Bool), binary.location)?;
+                self.add_constraint(&left_type, &Type::Basic(crate::ast::types::BasicType::Bool), binary.location)?;
+                self.add_constraint(&right_type, &Type::Basic(crate::ast::types::BasicType::Bool), binary.location)?;
                 Ok(Type::Basic(crate::ast::types::BasicType::Bool))
             }
             _ => {
@@ -444,7 +450,7 @@ impl TypeInference {
 
         match unary.operator {
             crate::ast::expr::UnaryOp::Not => {
-                self.add_constraint(operand_type, Type::Basic(crate::ast::types::BasicType::Bool), unary.location)?;
+                self.add_constraint(&operand_type, &Type::Basic(crate::ast::types::BasicType::Bool), unary.location)?;
                 Ok(Type::Basic(crate::ast::types::BasicType::Bool))
             }
             crate::ast::expr::UnaryOp::Neg |
@@ -522,7 +528,7 @@ impl TypeInference {
         // Check that all elements have the same type
         for element in &array.elements[1..] {
             let element_type = self.infer_expression(element, env)?;
-            self.add_constraint(element_type, first_type.clone(), array.location)?;
+            self.add_constraint(&element_type, &first_type, array.location)?;
         }
 
         Ok(Type::Array(ArrayType {
@@ -550,8 +556,8 @@ impl TypeInference {
         for entry in &map.entries[1..] {
             let key_type = self.infer_expression(&entry.key, env)?;
             let value_type = self.infer_expression(&entry.value, env)?;
-            self.add_constraint(key_type, first_key_type.clone(), map.location)?;
-            self.add_constraint(value_type, first_value_type.clone(), map.location)?;
+            self.add_constraint(&key_type, &first_key_type, map.location)?;
+            self.add_constraint(&value_type, &first_value_type, map.location)?;
         }
 
         Ok(Type::Map(MapType {
@@ -575,7 +581,7 @@ impl TypeInference {
     fn infer_if_expression(&mut self, if_expr: &IfExpr, env: &mut TypeEnvironment) -> Result<Type> {
         // Infer condition type
         let condition_type = self.infer_expression(&if_expr.condition, env)?;
-        self.add_constraint(condition_type, Type::Basic(crate::ast::types::BasicType::Bool), if_expr.location)?;
+        self.add_constraint(&condition_type, &Type::Basic(crate::ast::types::BasicType::Bool), if_expr.location)?;
         
         // Infer then branch type
         let then_type = self.infer_expression(&if_expr.then_branch, env)?;
@@ -583,7 +589,7 @@ impl TypeInference {
         // Infer else branch type
         if let Some(else_branch) = &if_expr.else_branch {
             let else_type = self.infer_expression(else_branch, env)?;
-            self.add_constraint(then_type, else_type, if_expr.location)?;
+            self.add_constraint(&then_type, &else_type, if_expr.location)?;
         }
 
         Ok(then_type)
@@ -608,7 +614,7 @@ impl TypeInference {
         // Check that all arms have the same type
         for arm in &match_expr.arms[1..] {
             let arm_type = self.infer_expression(&arm.body, env)?;
-            self.add_constraint(arm_type, first_arm_type.clone(), match_expr.location)?;
+            self.add_constraint(&arm_type, &first_arm_type, match_expr.location)?;
         }
 
         Ok(first_arm_type)
@@ -629,21 +635,21 @@ impl TypeInference {
         
         // Create function type
         let param_types: Vec<Type> = lambda.parameters.iter().map(|p| p.param_type.clone()).collect();
-        let return_type = lambda.return_type.clone().unwrap_or(Box::new(body_type));
+        let return_type = lambda.return_type.clone().unwrap_or(body_type);
         
         Ok(Type::Function(FunctionType {
             parameter_types: param_types,
-            return_type: Some(return_type),
+            return_type: Some(Box::new(return_type)),
             variadic: false,
             location: lambda.location,
         }))
     }
 
     /// Add a type constraint
-    fn add_constraint(&mut self, left: Type, right: Type, location: crate::error::Location) -> Result<()> {
+    fn add_constraint(&mut self, left: &Type, right: &Type, location: crate::error::Location) -> Result<()> {
         self.constraints.push(TypeConstraint {
-            left,
-            right,
+            left: left.clone(),
+            right: right.clone(),
             location,
         });
         Ok(())

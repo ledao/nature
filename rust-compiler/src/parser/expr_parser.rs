@@ -3,7 +3,7 @@
 use crate::ast::expr::*;
 use crate::ast::types::Type;
 use crate::error::{CompilerError, Result};
-use crate::lexer::Token;
+use crate::lexer::token::Token;
 use super::Parser;
 
 /// Parse an expression
@@ -441,20 +441,24 @@ fn parse_primary(parser: &mut Parser) -> Result<Option<Expression>> {
         Some(token) => match &token.token {
             // Literals
             Token::Integer(n) => {
+                let n = *n;
                 parser.advance()?;
-                Ok(Some(Expression::Literal(Literal::Integer(*n))))
+                Ok(Some(Expression::Literal(Literal::Integer(n))))
             }
             Token::Float(f) => {
+                let f = *f;
                 parser.advance()?;
-                Ok(Some(Expression::Literal(Literal::Float(*f))))
+                Ok(Some(Expression::Literal(Literal::Float(f))))
             }
             Token::String(s) => {
+                let s = s.clone();
                 parser.advance()?;
-                Ok(Some(Expression::Literal(Literal::String(s.clone()))))
+                Ok(Some(Expression::Literal(Literal::String(s))))
             }
             Token::Char(c) => {
+                let c = *c;
                 parser.advance()?;
-                Ok(Some(Expression::Literal(Literal::Char(*c))))
+                Ok(Some(Expression::Literal(Literal::Char(c))))
             }
             Token::True => {
                 parser.advance()?;
@@ -471,8 +475,9 @@ fn parse_primary(parser: &mut Parser) -> Result<Option<Expression>> {
             
             // Identifiers
             Token::Identifier(name) => {
+                let name = name.clone();
                 parser.advance()?;
-                Ok(Some(Expression::Variable(name.clone())))
+                Ok(Some(Expression::Variable(name)))
             }
             
             // Parenthesized expressions
@@ -773,20 +778,24 @@ fn parse_pattern(parser: &mut Parser) -> Result<Option<Pattern>> {
     match parser.peek() {
         Some(token) => match &token.token {
             Token::Integer(n) => {
+                let n = *n;
                 parser.advance()?;
-                Ok(Some(Pattern::Literal(Literal::Integer(*n))))
+                Ok(Some(Pattern::Literal(Literal::Integer(n))))
             }
             Token::Float(f) => {
+                let f = *f;
                 parser.advance()?;
-                Ok(Some(Pattern::Literal(Literal::Float(*f))))
+                Ok(Some(Pattern::Literal(Literal::Float(f))))
             }
             Token::String(s) => {
+                let s = s.clone();
                 parser.advance()?;
-                Ok(Some(Pattern::Literal(Literal::String(s.clone()))))
+                Ok(Some(Pattern::Literal(Literal::String(s))))
             }
             Token::Char(c) => {
+                let c = *c;
                 parser.advance()?;
-                Ok(Some(Pattern::Literal(Literal::Char(*c))))
+                Ok(Some(Pattern::Literal(Literal::Char(c))))
             }
             Token::True => {
                 parser.advance()?;
@@ -801,8 +810,9 @@ fn parse_pattern(parser: &mut Parser) -> Result<Option<Pattern>> {
                 Ok(Some(Pattern::Literal(Literal::Null)))
             }
             Token::Identifier(name) => {
+                let name = name.clone();
                 parser.advance()?;
-                Ok(Some(Pattern::Variable(name.clone())))
+                Ok(Some(Pattern::Variable(name)))
             }
             Token::Underscore => {
                 parser.advance()?;
@@ -1021,7 +1031,7 @@ fn parse_select_expression(parser: &mut Parser) -> Result<Option<Expression>> {
     
     Ok(Some(Expression::Select(SelectExpr {
         cases,
-        default_case,
+        default_case: default_case.map(Box::new),
         location: parser.current_location(),
     })))
 }

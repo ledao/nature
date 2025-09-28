@@ -46,7 +46,7 @@ impl SymbolTable {
             name: func.name.clone(),
             declaration: func.clone(),
             scope_level: self.current_level,
-            exported: self.is_exported(func),
+            exported: self.is_exported(&Declaration::Function(func.clone())),
         });
 
         self.insert_symbol(func.name.clone(), symbol)?;
@@ -59,7 +59,7 @@ impl SymbolTable {
             name: var.name.clone(),
             declaration: var.clone(),
             scope_level: self.current_level,
-            exported: self.is_exported(var),
+            exported: self.is_exported(&Declaration::Variable(var.clone())),
         });
 
         self.insert_symbol(var.name.clone(), symbol)?;
@@ -72,7 +72,7 @@ impl SymbolTable {
             name: const_.name.clone(),
             declaration: const_.clone(),
             scope_level: self.current_level,
-            exported: self.is_exported(const_),
+            exported: self.is_exported(&Declaration::Constant(const_.clone())),
         });
 
         self.insert_symbol(const_.name.clone(), symbol)?;
@@ -85,7 +85,7 @@ impl SymbolTable {
             name: type_.name.clone(),
             declaration: type_.clone(),
             scope_level: self.current_level,
-            exported: self.is_exported(type_),
+            exported: self.is_exported(&Declaration::Type(type_.clone())),
         });
 
         self.insert_symbol(type_.name.clone(), symbol)?;
@@ -98,7 +98,7 @@ impl SymbolTable {
             name: struct_.name.clone(),
             declaration: struct_.clone(),
             scope_level: self.current_level,
-            exported: self.is_exported(struct_),
+            exported: self.is_exported(&Declaration::Struct(struct_.clone())),
         });
 
         self.insert_symbol(struct_.name.clone(), symbol)?;
@@ -111,7 +111,7 @@ impl SymbolTable {
             name: interface.name.clone(),
             declaration: interface.clone(),
             scope_level: self.current_level,
-            exported: self.is_exported(interface),
+            exported: self.is_exported(&Declaration::Interface(interface.clone())),
         });
 
         self.insert_symbol(interface.name.clone(), symbol)?;
@@ -124,7 +124,7 @@ impl SymbolTable {
             path: import.path.clone(),
             declaration: import.clone(),
             scope_level: self.current_level,
-            exported: self.is_exported(import),
+            exported: self.is_exported(&Declaration::Import(import.clone())),
         });
 
         self.insert_symbol(import.path.clone(), symbol)?;

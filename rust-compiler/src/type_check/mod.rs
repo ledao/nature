@@ -31,7 +31,7 @@ impl TypeCheckSystem {
     pub fn new() -> Self {
         Self {
             type_inference: TypeInference::new(),
-            type_checker: TypeChecker::new(),
+            type_checker: TypeChecker::new(crate::semantic::symbol_table::SymbolTable::new()),
             type_compatibility: TypeCompatibility::new(),
             generic_checker: GenericChecker::new(),
         }

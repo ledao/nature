@@ -2,7 +2,7 @@
 
 use crate::ast::types::*;
 use crate::error::{CompilerError, Result};
-use crate::lexer::Token;
+use crate::lexer::token::Token;
 use super::Parser;
 
 /// Parse a type
@@ -65,7 +65,7 @@ fn parse_error_type(parser: &mut Parser) -> Result<Option<Type>> {
     let ty = parse_function_type(parser)?;
     
     if let Some(ty) = ty {
-        if parser.consume(&Token::Bang)? {
+        if parser.consume(&Token::Not)? {
             Ok(Some(Type::Error(ErrorType {
                 inner_type: Box::new(ty),
                 location: parser.current_location(),
@@ -130,8 +130,9 @@ fn parse_array_type(parser: &mut Parser) -> Result<Option<Type>> {
         
         let size = if parser.consume(&Token::Comma)? {
             if let Some(Token::Integer(n)) = parser.peek().map(|t| &t.token) {
+                let n = *n;
                 parser.advance()?;
-                Some(*n as usize)
+                Some(n as usize)
             } else {
                 return Err(CompilerError::syntax(
                     parser.current_location().line,
@@ -236,9 +237,10 @@ fn parse_channel_type(parser: &mut Parser) -> Result<Option<Type>> {
         // Parse buffer size if present
         let buffer_size = if parser.consume(&Token::LeftBracket)? {
             if let Some(Token::Integer(n)) = parser.peek().map(|t| &t.token) {
+                let n = *n;
                 parser.advance()?;
                 parser.expect(&Token::RightBracket)?;
-                Some(*n as usize)
+                Some(n as usize)
             } else {
                 return Err(CompilerError::syntax(
                     parser.current_location().line,
@@ -388,7 +390,7 @@ fn parse_primary_type(parser: &mut Parser) -> Result<Option<Type>> {
                 parser.advance()?;
                 Ok(Some(Type::Basic(BasicType::String)))
             }
-            Token::Char => {
+            Token::Char(_) => {
                 parser.advance()?;
                 Ok(Some(Type::Basic(BasicType::Char)))
             }
@@ -407,6 +409,7 @@ fn parse_primary_type(parser: &mut Parser) -> Result<Option<Type>> {
             
             // Generic type parameter
             Token::Identifier(name) => {
+                let name = name.clone();
                 parser.advance()?;
                 
                 // Check for type arguments

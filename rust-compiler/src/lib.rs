@@ -80,6 +80,17 @@ impl Compiler {
     }
 }
 
+/// Simple compile function for testing
+pub fn compile(source: &str) -> Result<()> {
+    // Basic compilation pipeline
+    let tokens = lexer::Lexer::new(source.to_string()).collect::<Result<Vec<_>>>()?;
+    let mut parser = parser::Parser::new(source.to_string(), None);
+    let _program = parser.parse_program()?;
+    
+    // TODO: Add semantic analysis, type checking, and code generation
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

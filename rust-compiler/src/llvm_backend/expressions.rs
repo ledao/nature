@@ -345,13 +345,6 @@ impl LLVMBackend {
         Ok(ir)
     }
 
-    /// Generate a unique identifier
-    fn generate_unique_id(&mut self) -> String {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        static COUNTER: AtomicUsize = AtomicUsize::new(0);
-        let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-        format!("{}", id)
-    }
 }
 
 #[cfg(test)]
