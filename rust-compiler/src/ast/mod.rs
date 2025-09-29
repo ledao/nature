@@ -36,24 +36,6 @@ pub struct SourceInfo {
     pub source_code: String,
 }
 
-/// All possible declarations in Nature
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Declaration {
-    /// Function declaration
-    Function(FunctionDecl),
-    /// Variable declaration
-    Variable(VariableDecl),
-    /// Constant declaration
-    Constant(ConstantDecl),
-    /// Type declaration
-    Type(TypeDecl),
-    /// Struct declaration
-    Struct(StructDecl),
-    /// Interface declaration
-    Interface(InterfaceDecl),
-    /// Import declaration
-    Import(ImportDecl),
-}
 
 
 /// Struct field

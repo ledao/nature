@@ -21,6 +21,11 @@ impl TypeChecker {
         }
     }
 
+    /// Check if the type checker is empty (no symbols)
+    pub fn is_empty(&self) -> bool {
+        self.symbol_table.is_empty()
+    }
+
     /// Check types in a program
     pub fn check_program(&mut self, program: &Program) -> Result<()> {
         for declaration in &program.declarations {

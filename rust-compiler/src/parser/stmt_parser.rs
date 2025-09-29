@@ -85,6 +85,8 @@ pub fn parse_statement(parser: &mut Parser) -> Result<Option<Statement>> {
             _ => {
                 // Try to parse as an expression statement
                 if let Some(expr) = parse_expression(parser)? {
+                    // Expression statements should end with semicolon
+                    parser.expect(&Token::Semicolon)?;
                     Ok(Some(Statement::Expression(expr)))
                 } else {
                     Ok(None)
@@ -229,19 +231,22 @@ pub fn parse_for_statement(parser: &mut Parser) -> Result<ForStmt> {
             ));
         }
         
-        let body = parse_statement(parser)?;
-        if body.is_none() {
-            return Err(CompilerError::syntax(
+        let body = if parser.check(&Token::LeftBrace) {
+            // Parse block statement
+            parse_block_statement(parser).map(|block| Statement::Block(block))?
+        } else {
+            // Parse single statement
+            parse_statement(parser)?.ok_or_else(|| CompilerError::syntax(
                 parser.current_location().line,
                 parser.current_location().column,
                 "Expected statement after for loop",
-            ));
-        }
+            ))?
+        };
         
         Ok(ForStmt {
             variable,
             iterable: iterable.unwrap(),
-            body: Box::new(body.unwrap()),
+            body: Box::new(body),
             location: parser.current_location(),
         })
     } else {

@@ -1,14 +1,14 @@
 //! Basic parsing tests for Nature compiler
 
 use nature_compiler::*;
-use std::path::Path;
+use nature_compiler::error::CompilerError;
 
 #[test]
 fn test_lexer_basic() {
     let source = "fn main() { return 42; }".to_string();
-    let mut lexer = crate::lexer::Lexer::new(source);
+    let mut lexer = nature_compiler::lexer::Lexer::new(source);
     
-    let tokens: Result<Vec<_>> = lexer.collect();
+    let tokens: Result<Vec<_>, _> = lexer.collect();
     assert!(tokens.is_ok());
     
     let tokens = tokens.unwrap();
@@ -18,7 +18,7 @@ fn test_lexer_basic() {
 #[test]
 fn test_parser_basic() {
     let source = "fn main() { return 42; }".to_string();
-    let mut parser = crate::parser::Parser::new(source, Some("test.n".to_string()));
+    let mut parser = nature_compiler::parser::Parser::new(source, Some("test.n".to_string()));
     
     let program = parser.parse_program();
     assert!(program.is_ok());
@@ -44,8 +44,8 @@ fn test_error_handling() {
 
 #[test]
 fn test_ast_creation() {
-    use crate::ast::*;
-    use crate::error::Location;
+    use nature_compiler::ast::*;
+    use nature_compiler::error::Location;
     
     let location = Location::new(1, 1, 0);
     let func_decl = FunctionDecl {
@@ -64,7 +64,7 @@ fn test_ast_creation() {
 
 #[test]
 fn test_type_system() {
-    use crate::ast::types::*;
+    use nature_compiler::ast::types::*;
     
     let int_type = Type::Basic(BasicType::Int);
     assert_eq!(int_type.to_string(), "int");
@@ -72,7 +72,7 @@ fn test_type_system() {
     let array_type = Type::Array(ArrayType {
         element_type: Box::new(int_type),
         size: Some(10),
-        location: crate::error::Location::new(1, 1, 0),
+        location: nature_compiler::error::Location::new(1, 1, 0),
     });
     
     assert_eq!(array_type.to_string(), "[int, 10]");

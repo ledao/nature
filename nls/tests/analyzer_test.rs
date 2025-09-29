@@ -22,13 +22,20 @@ async fn test_project() {
 
     debug!("start test");
 
-    let project_root = "/Users/weiwenhao/Code/nature-test";
+    // Set NATURE_ROOT environment variable to the current workspace
+    std::env::set_var("NATURE_ROOT", "/home/ledao/workspace/nature");
+
+    // Skip this test if the test directory doesn't exist
+    let project_root = "/tmp/nature-test";
+    if !std::path::Path::new(project_root).exists() {
+        std::fs::create_dir_all(project_root).unwrap();
+    }
 
     let mut project = Project::new(project_root.to_string()).await;
     project.backend_handle_queue();
 
     let module_ident = "nature-test.main";
-    let file_path = "/Users/weiwenhao/Code/nature-test/main.n";
+    let file_path = format!("{}/main.n", project_root);
 
     // Phase 1: Build with incomplete code
     let phase1_code = r#"import json

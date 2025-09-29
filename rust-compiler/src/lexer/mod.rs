@@ -44,6 +44,13 @@ impl Lexer {
             return Ok(None);
         }
 
+        // Skip whitespace and update position
+        self.skip_whitespace();
+
+        if self.position >= self.source.len() {
+            return Ok(None);
+        }
+
         let mut lexer = Token::lexer(&self.source[self.position..]);
         
         match lexer.next() {
@@ -55,9 +62,11 @@ impl Lexer {
                     self.position,
                 );
 
-                // Update position
-                self.position += lexer.span().end;
-                self.update_position(&token);
+                // Update position based on the actual consumed text
+                let span_end = lexer.span().end;
+                let consumed_text = self.source[self.position..self.position + span_end].to_string();
+                self.update_position_from_source(&consumed_text);
+                self.position += span_end;
 
                 Ok(Some(token_with_location))
             }
@@ -70,6 +79,32 @@ impl Lexer {
                 ))
             }
             None => Ok(None),
+        }
+    }
+
+    /// Skip whitespace characters and update position
+    fn skip_whitespace(&mut self) {
+        while self.position < self.source.len() {
+            let ch = self.source.chars().nth(self.position).unwrap();
+            if ch.is_whitespace() {
+                if ch == '\n' {
+                    self.line += 1;
+                    self.column = 1;
+                } else if ch == '\r' {
+                    // Handle \r\n as single newline
+                    if self.position + 1 < self.source.len() && 
+                       self.source.chars().nth(self.position + 1).unwrap() == '\n' {
+                        self.position += 1; // Skip \n
+                    }
+                    self.line += 1;
+                    self.column = 1;
+                } else {
+                    self.column += 1;
+                }
+                self.position += 1;
+            } else {
+                break;
+            }
         }
     }
 
@@ -123,6 +158,21 @@ impl Lexer {
             }
             _ => {
                 // For other tokens, just increment column by token length
+                self.column += 1;
+            }
+        }
+    }
+
+    /// Update position based on the source text that was consumed
+    fn update_position_from_source(&mut self, consumed_text: &str) {
+        for ch in consumed_text.chars() {
+            if ch == '\n' {
+                self.line += 1;
+                self.column = 1;
+            } else if ch == '\r' {
+                // Handle \r\n as single newline
+                continue;
+            } else {
                 self.column += 1;
             }
         }
@@ -189,7 +239,7 @@ mod tests {
         let tokens: Result<Vec<_>> = lexer.collect();
         let tokens = tokens.unwrap();
         
-        assert_eq!(tokens.len(), 8);
+        assert_eq!(tokens.len(), 9);
         assert_eq!(tokens[0].token, Token::Fn);
         assert_eq!(tokens[1].token, Token::Identifier("main".to_string()));
         assert_eq!(tokens[2].token, Token::LeftParen);
@@ -198,6 +248,7 @@ mod tests {
         assert_eq!(tokens[5].token, Token::Return);
         assert_eq!(tokens[6].token, Token::Integer(42));
         assert_eq!(tokens[7].token, Token::Semicolon);
+        assert_eq!(tokens[8].token, Token::RightBrace);
     }
 
     #[test]
@@ -219,6 +270,11 @@ mod tests {
         
         let tokens: Result<Vec<_>> = lexer.collect();
         let tokens = tokens.unwrap();
+        
+        // Debug: print all tokens with line numbers
+        for (i, token) in tokens.iter().enumerate() {
+            println!("Token {}: {:?} at line {}", i, token.token, token.line);
+        }
         
         // Check that line numbers are tracked correctly
         assert_eq!(tokens[0].line, 1); // fn

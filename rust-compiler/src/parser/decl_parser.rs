@@ -720,8 +720,7 @@ fn parse_interface_method(parser: &mut Parser) -> Result<Option<InterfaceMethod>
 
 /// Parse block
 fn parse_block(parser: &mut Parser) -> Result<crate::ast::Block> {
-    parser.expect(&Token::LeftBrace)?;
-    
+    // Note: LeftBrace is already consumed by the caller
     let mut statements = Vec::new();
     
     while !parser.check(&Token::RightBrace) {

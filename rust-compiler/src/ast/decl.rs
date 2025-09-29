@@ -252,6 +252,8 @@ impl InterfaceDecl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::types::Parameter;
+    use crate::ast::StructField;
 
     #[test]
     fn test_function_declaration() {

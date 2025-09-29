@@ -311,27 +311,27 @@ mod tests {
     fn test_token_parsing() {
         let mut lexer = Token::lexer("fn main() { return 42; }");
         
-        assert_eq!(lexer.next(), Some(Token::Fn));
-        assert_eq!(lexer.next(), Some(Token::Identifier("main".to_string())));
-        assert_eq!(lexer.next(), Some(Token::LeftParen));
-        assert_eq!(lexer.next(), Some(Token::RightParen));
-        assert_eq!(lexer.next(), Some(Token::LeftBrace));
-        assert_eq!(lexer.next(), Some(Token::Return));
-        assert_eq!(lexer.next(), Some(Token::Integer(42)));
-        assert_eq!(lexer.next(), Some(Token::Semicolon));
-        assert_eq!(lexer.next(), Some(Token::RightBrace));
+        assert_eq!(lexer.next(), Some(Ok(Token::Fn)));
+        assert_eq!(lexer.next(), Some(Ok(Token::Identifier("main".to_string()))));
+        assert_eq!(lexer.next(), Some(Ok(Token::LeftParen)));
+        assert_eq!(lexer.next(), Some(Ok(Token::RightParen)));
+        assert_eq!(lexer.next(), Some(Ok(Token::LeftBrace)));
+        assert_eq!(lexer.next(), Some(Ok(Token::Return)));
+        assert_eq!(lexer.next(), Some(Ok(Token::Integer(42))));
+        assert_eq!(lexer.next(), Some(Ok(Token::Semicolon)));
+        assert_eq!(lexer.next(), Some(Ok(Token::RightBrace)));
         assert_eq!(lexer.next(), None);
     }
 
     #[test]
     fn test_string_literal() {
         let mut lexer = Token::lexer(r#""hello world""#);
-        assert_eq!(lexer.next(), Some(Token::String("hello world".to_string())));
+        assert_eq!(lexer.next(), Some(Ok(Token::String("hello world".to_string()))));
     }
 
     #[test]
     fn test_float_literal() {
         let mut lexer = Token::lexer("3.14159");
-        assert_eq!(lexer.next(), Some(Token::Float(3.14159)));
+        assert_eq!(lexer.next(), Some(Ok(Token::Float(3.14159))));
     }
 }

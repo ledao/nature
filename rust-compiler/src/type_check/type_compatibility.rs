@@ -51,6 +51,7 @@ impl TypeCompatibility {
     fn initialize_builtin_rules(&mut self) {
         // Integer type compatibility
         let int_types = vec![
+            Type::Basic(crate::ast::types::BasicType::Int),
             Type::Basic(crate::ast::types::BasicType::I8),
             Type::Basic(crate::ast::types::BasicType::I16),
             Type::Basic(crate::ast::types::BasicType::I32),

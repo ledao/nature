@@ -186,7 +186,7 @@ impl CompatibilityTester {
         let rust_result = compile(&source);
         
         // Compile with reference compiler
-        let reference_result = self.compile_with_reference(test_case)?;
+        let reference_result = self.compile_with_reference(test_case);
         
         // Compare results
         match (rust_result, reference_result) {
@@ -217,7 +217,7 @@ impl CompatibilityTester {
         
         // Both compilers should fail
         let rust_result = compile(&source);
-        let reference_result = self.compile_with_reference(test_case)?;
+        let reference_result = self.compile_with_reference(test_case);
         
         match (rust_result, reference_result) {
             (Err(_), Err(_)) => {
