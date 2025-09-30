@@ -110,19 +110,20 @@ pub fn parse_function_declaration(parser: &mut Parser) -> Result<crate::ast::Fun
         
         if !parser.check(&Token::RightParen) {
             loop {
+                // Parse parameter type first (Nature syntax: type name)
+                let param_type = parse_type(parser)?;
+                if param_type.is_none() {
+                    return Err(CompilerError::syntax(
+                        parser.current_location().line,
+                        parser.current_location().column,
+                        "Expected parameter type",
+                    ));
+                }
+                
+                // Parse parameter name
                 if let Some(Token::Identifier(param_name)) = parser.peek().map(|t| &t.token) {
                     let name = param_name.clone();
                     parser.advance()?;
-                    parser.expect(&Token::Colon)?;
-                    
-                    let param_type = parse_type(parser)?;
-                    if param_type.is_none() {
-                        return Err(CompilerError::syntax(
-                            parser.current_location().line,
-                            parser.current_location().column,
-                            "Expected parameter type",
-                        ));
-                    }
                     
                     // Parse default value
                     let default_value = if parser.consume(&Token::Assign)? {
@@ -137,6 +138,12 @@ pub fn parse_function_declaration(parser: &mut Parser) -> Result<crate::ast::Fun
                         default_value,
                         location: parser.current_location(),
                     });
+                } else {
+                    return Err(CompilerError::syntax(
+                        parser.current_location().line,
+                        parser.current_location().column,
+                        "Expected parameter name after type",
+                    ));
                 }
                 
                 if !parser.consume(&Token::Comma)? {

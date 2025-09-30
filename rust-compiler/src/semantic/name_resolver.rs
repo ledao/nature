@@ -405,8 +405,8 @@ impl NameResolver {
             return Ok(());
         }
 
-        // Look up in symbol table
-        if symbol_table.lookup_variable(name).is_none() {
+        // Look up in symbol table - check both variables and functions
+        if symbol_table.lookup_variable(name).is_none() && symbol_table.lookup_function(name).is_none() {
             return Err(CompilerError::semantic(
                 0, 0, // TODO: Get actual location
                 format!("Undefined variable '{}'", name),

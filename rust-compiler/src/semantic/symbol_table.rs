@@ -19,11 +19,83 @@ pub struct SymbolTable {
 impl SymbolTable {
     /// Create a new symbol table
     pub fn new() -> Self {
-        Self {
+        let mut symbol_table = Self {
             global_symbols: HashMap::new(),
             current_scope: vec![HashMap::new()],
             current_level: 0,
-        }
+        };
+        
+        // Initialize built-in functions
+        symbol_table.initialize_builtin_functions();
+        symbol_table
+    }
+    
+    /// Initialize built-in functions
+    fn initialize_builtin_functions(&mut self) {
+        // println function - takes variable arguments and returns void
+        let println_func = FunctionDecl {
+            name: "println".to_string(),
+            generics: vec![],
+            parameters: vec![], // Variable arguments - we'll handle this specially
+            return_type: None, // void return type
+            body: None, // External function
+            attributes: vec![],
+            location: crate::error::Location::new(0, 0, 0),
+        };
+        
+        let println_symbol = Symbol::Function(FunctionSymbol {
+            name: "println".to_string(),
+            declaration: println_func,
+            scope_level: 0,
+            exported: true,
+        });
+        
+        self.global_symbols.insert("println".to_string(), println_symbol);
+        
+        // print function - similar to println but without newline
+        let print_func = FunctionDecl {
+            name: "print".to_string(),
+            generics: vec![],
+            parameters: vec![],
+            return_type: None,
+            body: None,
+            attributes: vec![],
+            location: crate::error::Location::new(0, 0, 0),
+        };
+        
+        let print_symbol = Symbol::Function(FunctionSymbol {
+            name: "print".to_string(),
+            declaration: print_func,
+            scope_level: 0,
+            exported: true,
+        });
+        
+        self.global_symbols.insert("print".to_string(), print_symbol);
+        
+        // len function - returns length of string/array
+        let len_func = FunctionDecl {
+            name: "len".to_string(),
+            generics: vec![],
+            parameters: vec![crate::ast::types::Parameter {
+                name: "value".to_string(),
+                param_type: Type::Basic(crate::ast::types::BasicType::String),
+                default_value: None,
+                location: crate::error::Location::new(0, 0, 0),
+            }],
+            return_type: Some(Type::Basic(crate::ast::types::BasicType::Int)),
+            body: None,
+            attributes: vec![],
+            location: crate::error::Location::new(0, 0, 0),
+        };
+        
+        let len_symbol = Symbol::Function(FunctionSymbol {
+            name: "len".to_string(),
+            declaration: len_func,
+            scope_level: 0,
+            exported: true,
+        });
+        
+        self.global_symbols.insert("len".to_string(), len_symbol);
     }
 
     /// Enter a new scope

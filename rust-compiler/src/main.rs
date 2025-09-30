@@ -4,7 +4,7 @@
 
 use clap::{Parser, Subcommand};
 use log::info;
-use nature_compiler::{Compiler, CompilerConfig, OptLevel};
+use nrc::{Compiler, CompilerConfig, OptLevel};
 use std::path::PathBuf;
 
 /// Nature Programming Language Compiler
@@ -39,7 +39,7 @@ enum Commands {
         target_os: String,
         
         /// Optimization level
-        #[arg(short, long, default_value = "basic")]
+        #[arg(long, default_value = "basic")]
         optimization: String,
         
         /// Enable debug information

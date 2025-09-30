@@ -139,6 +139,19 @@ impl ScopeAnalyzer {
         // Create new scope for function body
         if let Some(body) = &func.body {
             self.enter_scope(func.location);
+            
+            // Add function parameters to the new scope
+            for param in &func.parameters {
+                let var_info = VariableInfo {
+                    name: param.name.clone(),
+                    var_type: Some(param.param_type.clone()),
+                    location: param.location,
+                    scope_level: self.current_scope_level(),
+                    mutable: true, // Function parameters are mutable by default
+                };
+                self.add_variable(param.name.clone(), var_info)?;
+            }
+            
             self.analyze_block(body)?;
             self.exit_scope();
         }

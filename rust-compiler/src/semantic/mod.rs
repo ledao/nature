@@ -45,6 +45,9 @@ impl SemanticAnalyzer {
         // Phase 2: Analyze scopes
         self.analyze_scopes(program)?;
         
+        // Phase 2.5: Add local variables from scope analyzer to symbol table
+        self.add_local_variables_to_symbol_table()?;
+        
         // Phase 3: Resolve names
         self.resolve_names(program)?;
         
@@ -87,6 +90,31 @@ impl SemanticAnalyzer {
     /// Analyze scopes in the program
     fn analyze_scopes(&mut self, program: &Program) -> Result<()> {
         self.scope_analyzer.analyze_program(program)?;
+        Ok(())
+    }
+
+    /// Add local variables from scope analyzer to symbol table
+    fn add_local_variables_to_symbol_table(&mut self) -> Result<()> {
+        // Get all scopes from the scope analyzer
+        let scopes = self.scope_analyzer.scopes();
+        
+        for scope in scopes {
+            // Add all variables from this scope to the symbol table
+            for (name, var_info) in &scope.variables {
+                // Create a VariableDecl from VariableInfo
+                let var_decl = VariableDecl {
+                    name: var_info.name.clone(),
+                    var_type: var_info.var_type.clone(),
+                    initializer: None, // We don't have initializer info in VariableInfo
+                    mutable: var_info.mutable,
+                    location: var_info.location,
+                };
+                
+                // Add to symbol table
+                self.symbol_table.insert_variable(&var_decl)?;
+            }
+        }
+        
         Ok(())
     }
 

@@ -12,3 +12,4 @@ libruntime.a
 .clion.source.upload.marker
 .zig-cache/*
 rust-compiler/target/*
+rust-compiler/main

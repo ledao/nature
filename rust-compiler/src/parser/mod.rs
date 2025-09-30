@@ -55,6 +55,9 @@ impl Parser {
         while !self.is_at_end() {
             if let Some(decl) = self.parse_declaration()? {
                 declarations.push(decl);
+            } else {
+                // If no declaration was parsed, advance to avoid infinite loop
+                self.advance()?;
             }
         }
 

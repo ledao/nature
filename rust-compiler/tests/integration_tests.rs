@@ -1,6 +1,6 @@
 //! Integration tests for Nature compiler
 
-use nature_compiler::*;
+use nrc::*;
 use std::fs;
 use std::path::Path;
 

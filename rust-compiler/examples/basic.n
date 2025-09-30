@@ -1,0 +1,8 @@
+fn add(int a, int b): int {
+    return a + b
+}
+    
+fn main() {   
+    println("hello nature\n");
+    println("3 + 2 = ", add(3, 2));
+}   
