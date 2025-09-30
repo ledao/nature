@@ -8,6 +8,9 @@ fn test_len() {
     var text = "Hello Nature";
     var length = len(text);
     println("Length of '", text, "' is ", length);
+    text = "Hello Nature, again";
+    length = len(text);
+    println("Length of '", text, "' is ", length);
 }
 
 fn main() {

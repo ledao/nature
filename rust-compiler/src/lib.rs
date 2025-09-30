@@ -337,6 +337,31 @@ impl Compiler {
                 }
                 c_stmt.push_str(";\n");
             }
+            crate::ast::stmt::Statement::Assignment(assign_stmt) => {
+                // 生成赋值语句
+                c_stmt.push_str("    ");
+                match &assign_stmt.target {
+                    crate::ast::stmt::AssignmentTarget::Variable(name) => {
+                        c_stmt.push_str(name);
+                    }
+                    _ => {
+                        c_stmt.push_str("/* TODO: Handle other assignment targets */");
+                    }
+                }
+                
+                // 生成赋值操作符
+                match assign_stmt.operator {
+                    crate::ast::stmt::AssignmentOp::Assign => {
+                        c_stmt.push_str(" = ");
+                    }
+                    _ => {
+                        c_stmt.push_str(" /* TODO: Handle other assignment operators */ ");
+                    }
+                }
+                
+                c_stmt.push_str(&self.generate_c_expression(&assign_stmt.value));
+                c_stmt.push_str(";\n");
+            }
             _ => {
                 // 其他语句类型的处理
                 c_stmt.push_str("    // TODO: Implement other statement types\n");
@@ -387,14 +412,37 @@ impl Compiler {
                                     }
                                 }
                                 crate::ast::Expression::Variable(name) => {
-                                    // 这里需要根据变量的实际类型来确定格式
-                                    // 暂时假设所有变量都是整数，因为我们的例子中length是整数
-                                    format_parts.push("%d");
-                                    args.push(name.clone());
+                                    // 根据变量名推断类型
+                                    // 这是一个简化的方法，在实际编译器中应该使用符号表
+                                    if name == "length" {
+                                        format_parts.push("%d");
+                                        args.push(name.clone());
+                                    } else {
+                                        format_parts.push("%s");
+                                        args.push(name.clone());
+                                    }
+                                }
+                                crate::ast::Expression::Call(call_expr) => {
+                                    // 函数调用，根据函数名推断返回类型
+                                    match &*call_expr.callee {
+                                        crate::ast::Expression::Variable(func_name) => {
+                                            if func_name == "len" {
+                                                format_parts.push("%d");
+                                                args.push(self.generate_c_expression(arg));
+                                            } else {
+                                                format_parts.push("%s");
+                                                args.push(self.generate_c_expression(arg));
+                                            }
+                                        }
+                                        _ => {
+                                            format_parts.push("%d");
+                                            args.push(self.generate_c_expression(arg));
+                                        }
+                                    }
                                 }
                                 _ => {
                                     format_parts.push("%d");
-                                    args.push("0".to_string());
+                                    args.push(self.generate_c_expression(arg));
                                 }
                             }
                         }
@@ -435,6 +483,7 @@ impl Compiler {
                     crate::ast::expr::BinaryOp::Sub => "-",
                     crate::ast::expr::BinaryOp::Mul => "*",
                     crate::ast::expr::BinaryOp::Div => "/",
+                    crate::ast::expr::BinaryOp::Assign => "=",
                     _ => "+",
                 };
                 format!("({} {} {})", left, op, right)
