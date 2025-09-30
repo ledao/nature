@@ -7,220 +7,320 @@ use std::fmt;
 #[derive(Logos, Debug, Clone, PartialEq)]
 pub enum Token {
     // Literals
+    /// Boolean literal true
     #[token("true")]
     True,
+    /// Boolean literal false
     #[token("false")]
     False,
+    /// Integer literal
     #[regex(r"[0-9]+", |lex| lex.slice().parse::<i64>().unwrap_or(0))]
     Integer(i64),
+    /// Floating point literal
     #[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().parse::<f64>().unwrap_or(0.0))]
     Float(f64),
+    /// String literal
     #[regex(r#""([^"\\]|\\.)*""#, |lex| lex.slice()[1..lex.slice().len()-1].to_string())]
     String(String),
+    /// Character literal
     #[regex(r"'([^'\\]|\\.)'", |lex| lex.slice().chars().nth(1).unwrap())]
     Char(char),
 
     // Keywords
+    /// Function keyword
     #[token("fn")]
     Fn,
+    /// Let keyword
     #[token("let")]
     Let,
+    /// Variable keyword
     #[token("var")]
     Var,
+    /// Constant keyword
     #[token("const")]
     Const,
+    /// Type keyword
     #[token("type")]
     Type,
+    /// Struct keyword
     #[token("struct")]
     Struct,
+    /// Interface keyword
     #[token("interface")]
     Interface,
+    /// Import keyword
     #[token("import")]
     Import,
+    /// If keyword
     #[token("if")]
     If,
+    /// Else keyword
     #[token("else")]
     Else,
+    /// For keyword
     #[token("for")]
     For,
+    /// While keyword
     #[token("while")]
     While,
+    /// Match keyword
     #[token("match")]
     Match,
+    /// Go keyword
     #[token("go")]
     Go,
+    /// Select keyword
     #[token("select")]
     Select,
+    /// Try keyword
     #[token("try")]
     Try,
+    /// Catch keyword
     #[token("catch")]
     Catch,
+    /// Throw keyword
     #[token("throw")]
     Throw,
+    /// Return keyword
     #[token("return")]
     Return,
+    /// Break keyword
     #[token("break")]
     Break,
+    /// Continue keyword
     #[token("continue")]
     Continue,
+    /// As keyword
     #[token("as")]
     As,
+    /// Is keyword
     #[token("is")]
     Is,
+    /// Null keyword
     #[token("null")]
     Null,
+    /// Any keyword
     #[token("any")]
     Any,
+    /// Any pointer keyword
     #[token("anyptr")]
     AnyPtr,
+    /// Raw pointer keyword
     #[token("rawptr")]
     RawPtr,
 
     // Type keywords
+    /// Integer type keyword
     #[token("int")]
     Int,
+    /// 8-bit signed integer type keyword
     #[token("i8")]
     I8,
+    /// 16-bit signed integer type keyword
     #[token("i16")]
     I16,
+    /// 32-bit signed integer type keyword
     #[token("i32")]
     I32,
+    /// 64-bit signed integer type keyword
     #[token("i64")]
     I64,
+    /// 8-bit unsigned integer type keyword
     #[token("u8")]
     U8,
+    /// 16-bit unsigned integer type keyword
     #[token("u16")]
     U16,
+    /// 32-bit unsigned integer type keyword
     #[token("u32")]
     U32,
+    /// 64-bit unsigned integer type keyword
     #[token("u64")]
     U64,
+    /// 32-bit float type keyword
     #[token("f32")]
     F32,
+    /// 64-bit float type keyword
     #[token("f64")]
     F64,
+    /// Boolean type keyword
     #[token("bool")]
     Bool,
+    /// String type keyword
     #[token("string")]
     StringType,
+    /// Vector type keyword
     #[token("vec")]
     Vec,
+    /// Map type keyword
     #[token("map")]
     Map,
+    /// Set type keyword
     #[token("set")]
     Set,
+    /// Tuple type keyword
     #[token("tup")]
     Tup,
 
     // Identifiers
+    /// Identifier token
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
     Identifier(String),
 
     // Operators
+    /// Plus operator
     #[token("+")]
     Plus,
+    /// Minus operator
     #[token("-")]
     Minus,
+    /// Multiplication operator
     #[token("*")]
     Star,
+    /// Division operator
     #[token("/")]
     Slash,
+    /// Modulo operator
     #[token("%")]
     Percent,
+    /// Bitwise AND operator
     #[token("&")]
     Ampersand,
+    /// Bitwise OR operator
     #[token("|")]
     Pipe,
+    /// Bitwise XOR operator
     #[token("^")]
     Caret,
+    /// Bitwise NOT operator
     #[token("~")]
     Tilde,
+    /// Left shift operator
     #[token("<<")]
     LeftShift,
+    /// Right shift operator
     #[token(">>")]
     RightShift,
+    /// Logical AND operator
     #[token("&&")]
     LogicalAnd,
+    /// Logical OR operator
     #[token("||")]
     LogicalOr,
+    /// Logical NOT operator
     #[token("!")]
     Not,
+    /// Equality operator
     #[token("==")]
     Equal,
+    /// Inequality operator
     #[token("!=")]
     NotEqual,
+    /// Less than operator
     #[token("<")]
     Less,
+    /// Less than or equal operator
     #[token("<=")]
     LessEqual,
+    /// Greater than operator
     #[token(">")]
     Greater,
+    /// Greater than or equal operator
     #[token(">=")]
     GreaterEqual,
 
     // Assignment operators
+    /// Assignment operator
     #[token("=")]
     Assign,
+    /// Add and assign operator
     #[token("+=")]
     PlusAssign,
+    /// Subtract and assign operator
     #[token("-=")]
     MinusAssign,
+    /// Multiply and assign operator
     #[token("*=")]
     StarAssign,
+    /// Divide and assign operator
     #[token("/=")]
     SlashAssign,
+    /// Modulo and assign operator
     #[token("%=")]
     PercentAssign,
+    /// Bitwise AND and assign operator
     #[token("&=")]
     AmpersandAssign,
+    /// Bitwise OR and assign operator
     #[token("|=")]
     PipeAssign,
+    /// Bitwise XOR and assign operator
     #[token("^=")]
     CaretAssign,
+    /// Left shift and assign operator
     #[token("<<=")]
     LeftShiftAssign,
+    /// Right shift and assign operator
     #[token(">>=")]
     RightShiftAssign,
 
     // Delimiters
+    /// Left parenthesis
     #[token("(")]
     LeftParen,
+    /// Right parenthesis
     #[token(")")]
     RightParen,
+    /// Left bracket
     #[token("[")]
     LeftBracket,
+    /// Right bracket
     #[token("]")]
     RightBracket,
+    /// Left brace
     #[token("{")]
     LeftBrace,
+    /// Right brace
     #[token("}")]
     RightBrace,
+    /// Comma
     #[token(",")]
     Comma,
+    /// Semicolon
     #[token(";")]
     Semicolon,
+    /// Colon
     #[token(":")]
     Colon,
+    /// Dot
     #[token(".")]
     Dot,
+    /// Arrow
     #[token("->")]
     Arrow,
+    /// Question mark
     #[token("?")]
     Question,
 
     // Special tokens
+    /// Underscore
     #[token("_")]
     Underscore,
 
     // Additional tokens
+    /// Default keyword
     #[token("default")]
     Default,
+    /// In keyword
     #[token("in")]
     In,
+    /// At symbol
     #[token("@")]
     At,
+    /// Channel keyword
     #[token("chan")]
     Chan,
+    /// Mutable keyword
     #[token("mut")]
     Mut,
 
@@ -228,15 +328,20 @@ pub enum Token {
     #[regex(r"//[^\n]*", logos::skip)]
     #[regex(r"/\*([^*]|\*[^/])*\*/", logos::skip)]
     #[regex(r"[ \t\n\r]+", logos::skip)]
+    /// Error token for invalid input
     Error,
 }
 
 /// Token with location information
 #[derive(Debug, Clone, PartialEq)]
 pub struct TokenWithLocation {
+    /// The token itself
     pub token: Token,
+    /// Line number (1-based)
     pub line: usize,
+    /// Column number (1-based)
     pub column: usize,
+    /// Character offset from the start of the file
     pub offset: usize,
 }
 
@@ -295,7 +400,6 @@ impl fmt::Display for Token {
             Token::Dot => write!(f, "."),
             Token::Arrow => write!(f, "->"),
             Token::Question => write!(f, "?"),
-            Token::Not => write!(f, "!"),
             Token::Underscore => write!(f, "_"),
             Token::Error => write!(f, "<error>"),
             _ => write!(f, "{:?}", self),

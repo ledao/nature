@@ -1,6 +1,5 @@
 //! Error handling for the Nature compiler
 
-use std::fmt;
 use thiserror::Error;
 use serde::{Serialize, Deserialize};
 
@@ -13,42 +12,60 @@ pub enum CompilerError {
     /// Lexical analysis errors
     #[error("Lexical error at {line}:{column}: {message}")]
     Lexical {
+        /// Line number where the error occurred
         line: usize,
+        /// Column number where the error occurred
         column: usize,
+        /// Error message
         message: String,
     },
 
     /// Syntax analysis errors
     #[error("Syntax error at {line}:{column}: {message}")]
     Syntax {
+        /// Line number where the error occurred
         line: usize,
+        /// Column number where the error occurred
         column: usize,
+        /// Error message
         message: String,
     },
 
     /// Semantic analysis errors
     #[error("Semantic error at {line}:{column}: {message}")]
     Semantic {
+        /// Line number where the error occurred
         line: usize,
+        /// Column number where the error occurred
         column: usize,
+        /// Error message
         message: String,
     },
 
     /// Type checking errors
     #[error("Type error at {line}:{column}: {message}")]
     Type {
+        /// Line number where the error occurred
         line: usize,
+        /// Column number where the error occurred
         column: usize,
+        /// Error message
         message: String,
     },
 
     /// Code generation errors
     #[error("Code generation error: {message}")]
-    CodeGen { message: String },
+    CodeGen { 
+        /// Error message
+        message: String 
+    },
 
     /// LLVM backend errors
     #[error("LLVM error: {message}")]
-    Llvm { message: String },
+    Llvm { 
+        /// Error message
+        message: String 
+    },
 
     /// I/O errors
     #[error("I/O error: {0}")]
@@ -56,22 +73,34 @@ pub enum CompilerError {
 
     /// File not found
     #[error("File not found: {path}")]
-    FileNotFound { path: String },
+    FileNotFound { 
+        /// Path to the file that was not found
+        path: String 
+    },
 
     /// Invalid configuration
     #[error("Invalid configuration: {message}")]
-    Config { message: String },
+    Config { 
+        /// Error message
+        message: String 
+    },
 
     /// Internal compiler error
     #[error("Internal compiler error: {message}")]
-    Internal { message: String },
+    Internal { 
+        /// Error message
+        message: String 
+    },
 }
 
 /// Source location information
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Location {
+    /// Line number (1-based)
     pub line: usize,
+    /// Column number (1-based)
     pub column: usize,
+    /// Character offset from the start of the file
     pub offset: usize,
 }
 
@@ -85,9 +114,13 @@ impl Location {
 /// Error context for better error reporting
 #[derive(Debug, Clone)]
 pub struct ErrorContext {
+    /// Path to the source file
     pub file_path: Option<String>,
+    /// Source code content
     pub source_code: Option<String>,
+    /// Location where the error occurred
     pub location: Location,
+    /// Suggestion for fixing the error
     pub suggestion: Option<String>,
 }
 

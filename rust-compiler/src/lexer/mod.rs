@@ -132,6 +132,7 @@ impl Lexer {
     }
 
     /// Update line and column position based on the token
+    #[allow(dead_code)]
     fn update_position(&mut self, token: &Token) {
         match token {
             Token::String(s) => {
@@ -198,6 +199,7 @@ pub struct TokenIterator<'a> {
 }
 
 impl<'a> TokenIterator<'a> {
+    /// Create a new token iterator
     pub fn new(lexer: &'a mut Lexer) -> Self {
         Self { lexer }
     }

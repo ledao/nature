@@ -43,39 +43,57 @@ pub enum Type {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BasicType {
     /// Integer types
+    /// 32-bit signed integer
     Int,
+    /// 8-bit signed integer
     I8,
+    /// 16-bit signed integer
     I16,
+    /// 32-bit signed integer
     I32,
+    /// 64-bit signed integer
     I64,
+    /// 8-bit unsigned integer
     U8,
+    /// 16-bit unsigned integer
     U16,
+    /// 32-bit unsigned integer
     U32,
+    /// 64-bit unsigned integer
     U64,
     
     /// Floating point types
+    /// 32-bit floating point
     F32,
+    /// 64-bit floating point
     F64,
     
     /// Boolean type
+    /// Boolean value (true/false)
     Bool,
     
     /// String type
+    /// String of characters
     String,
     
     /// Character type
+    /// Single character
     Char,
     
     /// Any type
+    /// Any value type
     Any,
     
     /// Any pointer type
+    /// Pointer to any type
     AnyPtr,
     
     /// Raw pointer type
+    /// Raw pointer
     RawPtr,
     
     /// Void type
+    /// No value
     Void,
 }
 

@@ -12,10 +12,10 @@ pub mod lexer;
 pub mod parser;
 pub mod semantic;
 pub mod type_check;
+/// LLVM backend for code generation
 pub mod llvm_backend;
 
 // LLVM 相关导入
-use inkwell::context::Context;
 pub mod utils;
 
 use error::{CompilerError, Result};
@@ -73,14 +73,14 @@ impl Compiler {
     /// Compile a Nature source file
     pub fn compile_file(&self, path: &str) -> Result<()> {
         let source = std::fs::read_to_string(path)
-            .map_err(|e| CompilerError::file_not_found(path.to_string()))?;
+            .map_err(|_e| CompilerError::file_not_found(path.to_string()))?;
         self.compile_string(&source)
     }
 
     /// Compile Nature source code from string
     pub fn compile_string(&self, source: &str) -> Result<()> {
         // 1. 词法分析
-        let tokens = lexer::Lexer::new(source.to_string()).collect::<Result<Vec<_>>>()?;
+        let _tokens = lexer::Lexer::new(source.to_string()).collect::<Result<Vec<_>>>()?;
         
         // 2. 语法分析
         let mut parser = parser::Parser::new(source.to_string(), None);
@@ -143,6 +143,7 @@ impl Compiler {
     }
     
     /// Generate a simple C executable as fallback
+    #[allow(dead_code)]
     fn generate_simple_c_executable(&self, output_path: &std::path::Path, program: &crate::ast::Program) -> Result<()> {
         use std::fs;
         
@@ -446,7 +447,7 @@ impl Compiler {
 /// Simple compile function for testing
 pub fn compile(source: &str) -> Result<()> {
     // Basic compilation pipeline
-    let tokens = lexer::Lexer::new(source.to_string()).collect::<Result<Vec<_>>>()?;
+    let _tokens = lexer::Lexer::new(source.to_string()).collect::<Result<Vec<_>>>()?;
     let mut parser = parser::Parser::new(source.to_string(), None);
     let _program = parser.parse_program()?;
     

@@ -2,7 +2,7 @@
 
 use crate::ast::*;
 use crate::error::{CompilerError, Result};
-use super::{SymbolTable, Symbol};
+use super::SymbolTable;
 
 /// Name resolver for Nature language
 pub struct NameResolver {
@@ -14,6 +14,7 @@ pub struct NameResolver {
 #[derive(Debug, Clone)]
 pub struct ResolutionContext {
     /// Current scope level
+    #[allow(dead_code)]
     current_scope: usize,
     /// Import aliases
     import_aliases: std::collections::HashMap<String, String>,
@@ -72,7 +73,7 @@ impl NameResolver {
     /// Resolve names in a function
     fn resolve_function(&mut self, func: &FunctionDecl, symbol_table: &SymbolTable) -> Result<()> {
         // Add generic parameters to context
-        let mut old_generics = self.context.generic_params.clone();
+        let old_generics = self.context.generic_params.clone();
         for generic in &func.generics {
             self.context.generic_params.push(generic.name.clone());
         }
@@ -135,7 +136,7 @@ impl NameResolver {
     /// Resolve names in a struct declaration
     fn resolve_struct(&mut self, struct_: &StructDecl, symbol_table: &SymbolTable) -> Result<()> {
         // Add generic parameters to context
-        let mut old_generics = self.context.generic_params.clone();
+        let old_generics = self.context.generic_params.clone();
         for generic in &struct_.generics {
             self.context.generic_params.push(generic.name.clone());
         }
@@ -159,7 +160,7 @@ impl NameResolver {
     /// Resolve names in an interface declaration
     fn resolve_interface(&mut self, interface: &InterfaceDecl, symbol_table: &SymbolTable) -> Result<()> {
         // Add generic parameters to context
-        let mut old_generics = self.context.generic_params.clone();
+        let old_generics = self.context.generic_params.clone();
         for generic in &interface.generics {
             self.context.generic_params.push(generic.name.clone());
         }
@@ -181,7 +182,7 @@ impl NameResolver {
     }
 
     /// Resolve names in an import declaration
-    fn resolve_import(&mut self, import: &ImportDecl, symbol_table: &SymbolTable) -> Result<()> {
+    fn resolve_import(&mut self, import: &ImportDecl, _symbol_table: &SymbolTable) -> Result<()> {
         // Add import alias to context
         if let Some(alias) = &import.alias {
             self.context.import_aliases.insert(alias.clone(), import.path.clone());

@@ -79,7 +79,7 @@ impl GenericChecker {
 
         // Remove generic parameters from environment
         for generic in &func.generics {
-            self.environment.generics().iter().position(|g| g == &generic.name).map(|i| {
+            self.environment.generics().iter().position(|g| g == &generic.name).map(|_i| {
                 // Remove from environment (simplified)
             });
         }

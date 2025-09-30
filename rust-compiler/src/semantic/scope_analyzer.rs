@@ -251,7 +251,7 @@ impl ScopeAnalyzer {
     }
 
     /// Analyze an import declaration
-    fn analyze_import(&mut self, import: &ImportDecl) -> Result<()> {
+    fn analyze_import(&mut self, _import: &ImportDecl) -> Result<()> {
         // Imports are handled at the global scope level
         // This is a placeholder for future import analysis
         Ok(())

@@ -1,7 +1,7 @@
 //! Type checker for Nature language
 
 use crate::ast::*;
-use crate::error::{CompilerError, Result};
+use crate::error::Result;
 use crate::semantic::symbol_table::SymbolTable;
 
 /// Type checker for Nature language
@@ -9,6 +9,7 @@ pub struct TypeChecker {
     /// Symbol table for type information
     symbol_table: SymbolTable,
     /// Current scope depth
+    #[allow(dead_code)]
     scope_depth: usize,
 }
 
@@ -49,43 +50,43 @@ impl TypeChecker {
     }
 
     /// Check types in a function
-    fn check_function(&mut self, func: &FunctionDecl) -> Result<()> {
+    fn check_function(&mut self, _func: &FunctionDecl) -> Result<()> {
         // TODO: Implement function type checking
         Ok(())
     }
 
     /// Check types in a variable
-    fn check_variable(&mut self, var: &VariableDecl) -> Result<()> {
+    fn check_variable(&mut self, _var: &VariableDecl) -> Result<()> {
         // TODO: Implement variable type checking
         Ok(())
     }
 
     /// Check types in a constant
-    fn check_constant(&mut self, const_: &ConstantDecl) -> Result<()> {
+    fn check_constant(&mut self, _const_: &ConstantDecl) -> Result<()> {
         // TODO: Implement constant type checking
         Ok(())
     }
 
     /// Check types in a type declaration
-    fn check_type_declaration(&mut self, type_: &TypeDecl) -> Result<()> {
+    fn check_type_declaration(&mut self, _type_: &TypeDecl) -> Result<()> {
         // TODO: Implement type declaration checking
         Ok(())
     }
 
     /// Check types in a struct
-    fn check_struct(&mut self, struct_: &StructDecl) -> Result<()> {
+    fn check_struct(&mut self, _struct_: &StructDecl) -> Result<()> {
         // TODO: Implement struct type checking
         Ok(())
     }
 
     /// Check types in an interface
-    fn check_interface(&mut self, interface: &InterfaceDecl) -> Result<()> {
+    fn check_interface(&mut self, _interface: &InterfaceDecl) -> Result<()> {
         // TODO: Implement interface type checking
         Ok(())
     }
 
     /// Check types in an import
-    fn check_import(&mut self, import: &ImportDecl) -> Result<()> {
+    fn check_import(&mut self, _import: &ImportDecl) -> Result<()> {
         // TODO: Implement import type checking
         Ok(())
     }

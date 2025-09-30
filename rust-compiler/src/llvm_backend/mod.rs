@@ -5,58 +5,81 @@ use crate::error::{CompilerError, Result};
 /// LLVM context
 #[derive(Debug, Clone)]
 pub struct LLVMContext {
+    /// Context identifier
     pub id: String,
 }
 
 /// LLVM module
 #[derive(Debug, Clone)]
 pub struct LLVMModule {
+    /// Module name
     pub name: String,
+    /// Module identifier
     pub id: String,
 }
 
 /// LLVM builder
 #[derive(Debug, Clone)]
 pub struct LLVMBuilder {
+    /// Builder identifier
     pub id: String,
 }
 
 /// LLVM value
 #[derive(Debug, Clone)]
 pub struct LLVMValue {
+    /// Value identifier
     pub id: String,
+    /// Value type
     pub value_type: LLVMType,
 }
 
 /// LLVM function
 #[derive(Debug, Clone)]
 pub struct LLVMFunction {
+    /// Function name
     pub name: String,
+    /// Function type
     pub function_type: LLVMType,
+    /// Function parameters
     pub parameters: Vec<LLVMValue>,
 }
 
 /// LLVM type
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LLVMType {
+    /// Integer type with specified bit width
     Int(u32),
+    /// Floating point type with specified bit width
     Float(u32),
+    /// Pointer to another type
     Pointer(Box<LLVMType>),
+    /// Array type with size and element type
     Array(usize, Box<LLVMType>),
+    /// Struct type with field types
     Struct(Vec<LLVMType>),
+    /// Function type with return type and parameter types
     Function(Box<LLVMType>, Vec<LLVMType>),
+    /// Void type
     Void,
 }
 
 /// LLVM backend for code generation
 #[derive(Debug, Clone)]
 pub struct LLVMBackend {
+    /// LLVM context
     pub context: LLVMContext,
+    /// LLVM module
     pub module: LLVMModule,
+    /// IR builder
     pub builder: LLVMBuilder,
+    /// Type map
     pub type_map: HashMap<Type, LLVMType>,
+    /// Function map
     pub function_map: HashMap<String, LLVMFunction>,
+    /// Variable map
     pub variable_map: HashMap<String, LLVMValue>,
+    /// Current function name
     pub current_function: Option<String>,
 }
 
@@ -320,6 +343,7 @@ impl Default for LLVMBackend {
 }
 
 impl LLVMType {
+    #[allow(dead_code)]
     fn get_struct_fields(&self) -> &Vec<LLVMType> {
         match self {
             LLVMType::Struct(fields) => fields,

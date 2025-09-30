@@ -4,7 +4,7 @@ use crate::ast::*;
 use crate::error::{CompilerError, Result};
 use std::collections::HashMap;
 
-use super::{TypeEnvironment, TypeInferenceResult};
+use super::TypeEnvironment;
 
 /// Type inference engine for Nature language
 pub struct TypeInference {
@@ -184,7 +184,7 @@ impl TypeInference {
     }
 
     /// Infer types in an import declaration
-    fn infer_import(&mut self, import: &ImportDecl) -> Result<()> {
+    fn infer_import(&mut self, _import: &ImportDecl) -> Result<()> {
         // TODO: Infer imported types
         Ok(())
     }
@@ -395,7 +395,7 @@ impl TypeInference {
     /// Infer types in a method call expression
     fn infer_method_call_expression(&mut self, method_call: &MethodCallExpr, env: &mut TypeEnvironment) -> Result<Type> {
         // Infer object type
-        let object_type = self.infer_expression(&method_call.object, env)?;
+        let _object_type = self.infer_expression(&method_call.object, env)?;
         
         // TODO: Look up method in object type
         // For now, return void

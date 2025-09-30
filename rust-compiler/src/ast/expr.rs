@@ -118,43 +118,73 @@ pub struct BinaryExpr {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BinaryOp {
     // Arithmetic
+    /// Addition operator (+)
     Add,        // +
+    /// Subtraction operator (-)
     Sub,        // -
+    /// Multiplication operator (*)
     Mul,        // *
+    /// Division operator (/)
     Div,        // /
+    /// Modulo operator (%)
     Mod,        // %
+    /// Power operator (**)
     Pow,        // **
     
     // Bitwise
+    /// Bitwise AND operator (&)
     BitAnd,     // &
+    /// Bitwise OR operator (|)
     BitOr,      // |
+    /// Bitwise XOR operator (^)
     BitXor,     // ^
+    /// Left bit shift operator (<<)
     LeftShift,  // <<
+    /// Right bit shift operator (>>)
     RightShift, // >>
     
     // Logical
+    /// Logical AND operator (&&)
     LogicalAnd, // &&
+    /// Logical OR operator (||)
     LogicalOr,  // ||
     
     // Comparison
+    /// Equality operator (==)
     Equal,      // ==
+    /// Inequality operator (!=)
     NotEqual,   // !=
+    /// Less than operator (<)
     Less,       // <
+    /// Less than or equal operator (<=)
     LessEqual,  // <=
+    /// Greater than operator (>)
     Greater,    // >
+    /// Greater than or equal operator (>=)
     GreaterEqual, // >=
     
     // Assignment
+    /// Assignment operator (=)
     Assign,     // =
+    /// Add and assign operator (+=)
     AddAssign,  // +=
+    /// Subtract and assign operator (-=)
     SubAssign,  // -=
+    /// Multiply and assign operator (*=)
     MulAssign,  // *=
+    /// Divide and assign operator (/=)
     DivAssign,  // /=
+    /// Modulo and assign operator (%=)
     ModAssign,  // %=
+    /// Bitwise AND and assign operator (&=)
     BitAndAssign, // &=
+    /// Bitwise OR and assign operator (|=)
     BitOrAssign,  // |=
+    /// Bitwise XOR and assign operator (^=)
     BitXorAssign, // ^=
+    /// Left shift and assign operator (<<=)
     LeftShiftAssign,  // <<=
+    /// Right shift and assign operator (>>=)
     RightShiftAssign, // >>=
 }
 

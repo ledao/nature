@@ -337,27 +337,27 @@ impl SymbolTable {
             Declaration::Function(func) => {
                 func.attributes.iter().any(|attr| attr.name == "export")
             }
-            Declaration::Variable(var) => {
+            Declaration::Variable(_var) => {
                 // Variables are not exported by default
                 false
             }
-            Declaration::Constant(const_) => {
+            Declaration::Constant(_const_) => {
                 // Constants are not exported by default
                 false
             }
-            Declaration::Type(type_) => {
+            Declaration::Type(_type_) => {
                 // Types are not exported by default
                 false
             }
-            Declaration::Struct(struct_) => {
+            Declaration::Struct(_struct_) => {
                 // Structs are not exported by default
                 false
             }
-            Declaration::Interface(interface) => {
+            Declaration::Interface(_interface) => {
                 // Interfaces are not exported by default
                 false
             }
-            Declaration::Import(import) => {
+            Declaration::Import(_import) => {
                 // Imports are not exported by default
                 false
             }
@@ -365,42 +365,49 @@ impl SymbolTable {
     }
 
     /// Check if a function declaration is exported
+    #[allow(dead_code)]
     fn is_exported_function(&self, func: &FunctionDecl) -> bool {
         func.attributes.iter().any(|attr| attr.name == "export")
     }
 
     /// Check if a variable declaration is exported
-    fn is_exported_variable(&self, var: &VariableDecl) -> bool {
+    #[allow(dead_code)]
+    fn is_exported_variable(&self, _var: &VariableDecl) -> bool {
         // Variables are not exported by default
         false
     }
 
     /// Check if a constant declaration is exported
-    fn is_exported_constant(&self, const_: &ConstantDecl) -> bool {
+    #[allow(dead_code)]
+    fn is_exported_constant(&self, _const_: &ConstantDecl) -> bool {
         // Constants are not exported by default
         false
     }
 
     /// Check if a type declaration is exported
-    fn is_exported_type(&self, type_: &TypeDecl) -> bool {
+    #[allow(dead_code)]
+    fn is_exported_type(&self, _type_: &TypeDecl) -> bool {
         // Types are not exported by default
         false
     }
 
     /// Check if a struct declaration is exported
-    fn is_exported_struct(&self, struct_: &StructDecl) -> bool {
+    #[allow(dead_code)]
+    fn is_exported_struct(&self, _struct_: &StructDecl) -> bool {
         // Structs are not exported by default
         false
     }
 
     /// Check if an interface declaration is exported
-    fn is_exported_interface(&self, interface: &InterfaceDecl) -> bool {
+    #[allow(dead_code)]
+    fn is_exported_interface(&self, _interface: &InterfaceDecl) -> bool {
         // Interfaces are not exported by default
         false
     }
 
     /// Check if an import declaration is exported
-    fn is_exported_import(&self, import: &ImportDecl) -> bool {
+    #[allow(dead_code)]
+    fn is_exported_import(&self, _import: &ImportDecl) -> bool {
         // Imports are not exported by default
         false
     }

@@ -1,7 +1,7 @@
 //! Type checking system for Nature language
 
 use crate::ast::*;
-use crate::error::{CompilerError, Result};
+use crate::error::Result;
 use std::collections::HashMap;
 
 pub mod type_inference;

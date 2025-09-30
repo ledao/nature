@@ -1,8 +1,7 @@
 //! Semantic analysis for Nature language
 
 use crate::ast::*;
-use crate::error::{CompilerError, Result};
-use std::collections::HashMap;
+use crate::error::Result;
 
 pub mod symbol_table;
 pub mod scope_analyzer;
@@ -100,7 +99,7 @@ impl SemanticAnalyzer {
         
         for scope in scopes {
             // Add all variables from this scope to the symbol table
-            for (name, var_info) in &scope.variables {
+            for (_name, var_info) in &scope.variables {
                 // Create a VariableDecl from VariableInfo
                 let var_decl = VariableDecl {
                     name: var_info.name.clone(),

@@ -179,7 +179,7 @@ impl SemanticChecker {
     }
 
     /// Check an import declaration
-    fn check_import(&mut self, import: &ImportDecl, symbol_table: &SymbolTable) -> Result<()> {
+    fn check_import(&mut self, _import: &ImportDecl, _symbol_table: &SymbolTable) -> Result<()> {
         // TODO: Check if import path is valid
         Ok(())
     }
@@ -402,7 +402,7 @@ impl SemanticChecker {
     }
 
     /// Check a break statement
-    fn check_break_statement(&mut self, break_stmt: &crate::ast::stmt::BreakStmt, symbol_table: &SymbolTable) -> Result<()> {
+    fn check_break_statement(&mut self, break_stmt: &crate::ast::stmt::BreakStmt, _symbol_table: &SymbolTable) -> Result<()> {
         if self.context.loop_depth == 0 {
             return Err(CompilerError::semantic(
                 break_stmt.location.line,
@@ -414,7 +414,7 @@ impl SemanticChecker {
     }
 
     /// Check a continue statement
-    fn check_continue_statement(&mut self, continue_stmt: &crate::ast::stmt::ContinueStmt, symbol_table: &SymbolTable) -> Result<()> {
+    fn check_continue_statement(&mut self, continue_stmt: &crate::ast::stmt::ContinueStmt, _symbol_table: &SymbolTable) -> Result<()> {
         if self.context.loop_depth == 0 {
             return Err(CompilerError::semantic(
                 continue_stmt.location.line,

@@ -17,7 +17,9 @@ pub struct TypeCompatibility {
 /// Type pair for compatibility checking
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypePair {
+    /// Source type
     pub from: Type,
+    /// Target type
     pub to: Type,
 }
 
@@ -251,7 +253,7 @@ impl TypeCompatibility {
     }
 
     /// Check import type compatibility
-    fn check_import(&mut self, import: &ImportDecl) -> Result<()> {
+    fn check_import(&mut self, _import: &ImportDecl) -> Result<()> {
         // TODO: Check imported types
         Ok(())
     }

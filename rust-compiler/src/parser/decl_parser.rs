@@ -1,7 +1,6 @@
 //! Declaration parser for Nature language
 
 use crate::ast::decl::*;
-use crate::ast::types::Type;
 use crate::error::{CompilerError, Result};
 use crate::lexer::token::Token;
 use super::{Parser, parse_expression, parse_type};
@@ -529,7 +528,7 @@ pub fn parse_import_declaration(parser: &mut Parser) -> Result<ImportDecl> {
                         parser.advance()?;
                         
                         // Check for alias
-                        let alias = if parser.consume(&Token::As)? {
+                        let _alias = if parser.consume(&Token::As)? {
                             if let Some(Token::Identifier(alias_name)) = parser.peek().map(|t| &t.token) {
                                 let alias = alias_name.clone();
                                 parser.advance()?;

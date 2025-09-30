@@ -115,6 +115,7 @@ impl Parser {
     }
 
     /// Peek at the next token without consuming it
+    #[allow(dead_code)]
     fn peek_next(&mut self) -> Result<Option<&TokenWithLocation>> {
         if self.buffer.is_empty() {
             if let Some(token) = self.lexer.next_token()? {
@@ -139,6 +140,7 @@ impl Parser {
     }
 
     /// Check if the current token matches any of the given tokens
+    #[allow(dead_code)]
     fn check_any(&self, tokens: &[Token]) -> bool {
         tokens.iter().any(|token| self.check(token))
     }
@@ -181,6 +183,7 @@ impl Parser {
     }
 
     /// Expect the current token to match any of the given tokens
+    #[allow(dead_code)]
     fn expect_any(&mut self, tokens: &[Token]) -> Result<Token> {
         if let Some(token) = self.consume_any(tokens)? {
             Ok(token)
@@ -201,6 +204,7 @@ impl Parser {
     }
 
     /// Synchronize the parser after an error
+    #[allow(dead_code)]
     fn synchronize(&mut self) -> Result<()> {
         self.advance()?;
 
@@ -227,6 +231,7 @@ impl Parser {
 }
 
 /// Parse a declaration
+#[allow(dead_code)]
 fn parse_declaration(parser: &mut Parser) -> Result<Option<Declaration>> {
     if parser.is_at_end() {
         return Ok(None);
@@ -265,7 +270,7 @@ fn parse_declaration(parser: &mut Parser) -> Result<Option<Declaration>> {
             _ => {
                 // Try to parse as an expression statement
                 if let Some(expr) = parse_expression(parser)? {
-                    let stmt = crate::ast::stmt::Statement::Expression(expr);
+                    let _stmt = crate::ast::stmt::Statement::Expression(expr);
                     // Convert expression statement to variable declaration if it's an assignment
                     // This is a simplified approach - in a real parser, you'd handle this differently
                     Ok(None)
@@ -279,6 +284,7 @@ fn parse_declaration(parser: &mut Parser) -> Result<Option<Declaration>> {
 }
 
 /// Parse a statement
+#[allow(dead_code)]
 fn parse_statement(parser: &mut Parser) -> Result<Option<crate::ast::stmt::Statement>> {
     if parser.is_at_end() {
         return Ok(None);

@@ -1,7 +1,6 @@
 //! Expression parser for Nature language
 
 use crate::ast::expr::*;
-use crate::ast::types::Type;
 use crate::error::{CompilerError, Result};
 use crate::lexer::token::Token;
 use super::Parser;

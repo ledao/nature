@@ -2,7 +2,6 @@
 
 use crate::ast::stmt::*;
 use crate::ast::expr::Expression;
-use crate::ast::types::Type;
 use crate::error::{CompilerError, Result};
 use crate::lexer::token::Token;
 use super::{Parser, parse_expression, parse_type};
