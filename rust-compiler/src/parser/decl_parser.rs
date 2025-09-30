@@ -153,8 +153,8 @@ pub fn parse_function_declaration(parser: &mut Parser) -> Result<crate::ast::Fun
         
         parser.expect(&Token::RightParen)?;
         
-        // Parse return type
-        let return_type = if parser.consume(&Token::Arrow)? {
+        // Parse return type (支持 -> 或 : 两种语法)
+        let return_type = if parser.consume(&Token::Arrow)? || parser.consume(&Token::Colon)? {
             parse_type(parser)?
         } else {
             None

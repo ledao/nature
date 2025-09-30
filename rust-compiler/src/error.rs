@@ -91,6 +91,13 @@ pub enum CompilerError {
         /// Error message
         message: String 
     },
+    
+    /// LLVM builder error
+    #[error("LLVM builder error: {message}")]
+    BuilderError { 
+        /// Error message
+        message: String 
+    },
 }
 
 /// Source location information
@@ -155,6 +162,14 @@ impl ErrorContext {
 }
 
 /// Helper functions for creating common errors
+impl From<inkwell::builder::BuilderError> for CompilerError {
+    fn from(err: inkwell::builder::BuilderError) -> Self {
+        CompilerError::BuilderError {
+            message: format!("{:?}", err),
+        }
+    }
+}
+
 impl CompilerError {
     /// Create a lexical error
     pub fn lexical(line: usize, column: usize, message: impl Into<String>) -> Self {

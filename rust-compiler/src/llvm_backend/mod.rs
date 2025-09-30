@@ -1,353 +1,517 @@
 use std::collections::HashMap;
 use crate::ast::*;
 use crate::error::{CompilerError, Result};
-
-/// LLVM context
-#[derive(Debug, Clone)]
-pub struct LLVMContext {
-    /// Context identifier
-    pub id: String,
-}
-
-/// LLVM module
-#[derive(Debug, Clone)]
-pub struct LLVMModule {
-    /// Module name
-    pub name: String,
-    /// Module identifier
-    pub id: String,
-}
-
-/// LLVM builder
-#[derive(Debug, Clone)]
-pub struct LLVMBuilder {
-    /// Builder identifier
-    pub id: String,
-}
-
-/// LLVM value
-#[derive(Debug, Clone)]
-pub struct LLVMValue {
-    /// Value identifier
-    pub id: String,
-    /// Value type
-    pub value_type: LLVMType,
-}
-
-/// LLVM function
-#[derive(Debug, Clone)]
-pub struct LLVMFunction {
-    /// Function name
-    pub name: String,
-    /// Function type
-    pub function_type: LLVMType,
-    /// Function parameters
-    pub parameters: Vec<LLVMValue>,
-}
-
-/// LLVM type
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum LLVMType {
-    /// Integer type with specified bit width
-    Int(u32),
-    /// Floating point type with specified bit width
-    Float(u32),
-    /// Pointer to another type
-    Pointer(Box<LLVMType>),
-    /// Array type with size and element type
-    Array(usize, Box<LLVMType>),
-    /// Struct type with field types
-    Struct(Vec<LLVMType>),
-    /// Function type with return type and parameter types
-    Function(Box<LLVMType>, Vec<LLVMType>),
-    /// Void type
-    Void,
-}
+use inkwell::context::Context;
+use inkwell::module::Module;
+use inkwell::builder::Builder;
+use inkwell::values::{FunctionValue, BasicValueEnum, BasicMetadataValueEnum};
+use inkwell::types::{BasicType, BasicTypeEnum};
+use inkwell::AddressSpace;
 
 /// LLVM backend for code generation
-#[derive(Debug, Clone)]
-pub struct LLVMBackend {
+pub struct LLVMBackend<'ctx> {
     /// LLVM context
-    pub context: LLVMContext,
+    pub context: &'ctx Context,
     /// LLVM module
-    pub module: LLVMModule,
+    pub module: Module<'ctx>,
     /// IR builder
-    pub builder: LLVMBuilder,
-    /// Type map
-    pub type_map: HashMap<Type, LLVMType>,
-    /// Function map
-    pub function_map: HashMap<String, LLVMFunction>,
-    /// Variable map
-    pub variable_map: HashMap<String, LLVMValue>,
-    /// Current function name
-    pub current_function: Option<String>,
+    pub builder: Builder<'ctx>,
+    /// Function map for tracking generated functions
+    pub function_map: HashMap<String, FunctionValue<'ctx>>,
+    /// Variable map for tracking local variables
+    pub variable_map: HashMap<String, BasicValueEnum<'ctx>>,
+    /// Current function being generated
+    pub current_function: Option<FunctionValue<'ctx>>,
 }
 
-impl LLVMBackend {
+impl<'ctx> LLVMBackend<'ctx> {
     /// Create a new LLVM backend
-    pub fn new(module_name: &str) -> Self {
-        Self {
-            context: LLVMContext {
-                id: "context".to_string(),
-            },
-            module: LLVMModule {
-                name: module_name.to_string(),
-                id: "module".to_string(),
-            },
-            builder: LLVMBuilder {
-                id: "builder".to_string(),
-            },
-            type_map: HashMap::new(),
+    pub fn new(context: &'ctx Context, module_name: &str) -> Result<Self> {
+        let module = context.create_module(module_name);
+        let builder = context.create_builder();
+        
+        // 不再需要JIT执行引擎，只生成可执行文件
+        
+        Ok(Self {
+            context,
+            module,
+            builder,
             function_map: HashMap::new(),
             variable_map: HashMap::new(),
             current_function: None,
-        }
+        })
     }
 
     /// Generate LLVM IR for a program
-    pub fn generate_program(&mut self, program: &Program) -> Result<String> {
-        let mut ir = String::new();
+    pub fn generate_program(&mut self, program: &Program) -> Result<()> {
         
-        // Generate module header
-        ir.push_str(&format!("; ModuleID = '{}'\n", self.module.name));
-        ir.push_str("source_filename = \"<stdin>\"\n");
-        ir.push_str("target datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128\"\n");
-        ir.push_str("target triple = \"x86_64-unknown-linux-gnu\"\n\n");
+        // Add built-in functions
+        self.add_builtin_functions()?;
         
-        // Generate declarations
+        // Generate user-defined functions
         for declaration in &program.declarations {
-            let decl_ir = self.generate_declaration_ir(declaration)?;
-            ir.push_str(&decl_ir);
+            self.generate_declaration(declaration)?;
         }
-
-        Ok(ir)
+        
+        
+        Ok(())
     }
+    
+    /// Add built-in functions to the module
+    fn add_builtin_functions(&mut self) -> Result<()> {
+        // 声明外部函数，不实现函数体
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        
+        // 声明 printf 函数
+        let printf_type = self.context.i32_type().fn_type(&[i8_ptr_type.into()], true);
+        let _printf_func = self.module.add_function("printf", printf_type, None);
+        
+        // 声明 putchar 函数
+        let putchar_type = self.context.i32_type().fn_type(&[self.context.i32_type().into()], false);
+        let _putchar_func = self.module.add_function("putchar", putchar_type, None);
+        
+        // 声明 println 函数（可变参数）
+        let println_type = self.context.void_type().fn_type(&[i8_ptr_type.into()], true);
+        let println_func = self.module.add_function("println", println_type, None);
+        self.function_map.insert("println".to_string(), println_func);
+        
+        // 声明 print 函数（可变参数）
+        let print_func = self.module.add_function("print", println_type, None);
+        self.function_map.insert("print".to_string(), print_func);
+        
+        // 声明 len 函数（作为外部函数，使用C标准库的strlen）
+        let len_type = self.context.i32_type().fn_type(&[i8_ptr_type.into()], false);
+        let len_func = self.module.add_function("strlen", len_type, None);
+        self.function_map.insert("len".to_string(), len_func);
+        
+        Ok(())
+    }
+    
 
     /// Generate LLVM IR for a declaration
-    fn generate_declaration_ir(&mut self, declaration: &Declaration) -> Result<String> {
+    fn generate_declaration(&mut self, declaration: &Declaration) -> Result<()> {
         match declaration {
             Declaration::Function(func) => {
-                let func_type = self.get_llvm_function_type(func)?;
-                let mut ir = String::new();
-                
-                // Function signature
-                let return_type_str = match &func_type {
-                    LLVMType::Function(return_type, _) => self.llvm_type_to_string(return_type),
-                    _ => "void".to_string(),
-                };
-                
-                let param_types: Vec<String> = match &func_type {
-                    LLVMType::Function(_, param_types) => {
-                        param_types.iter().map(|t| self.llvm_type_to_string(t)).collect()
-                    }
-                    _ => vec![],
-                };
-                
-                let params_str = param_types.join(", ");
-                ir.push_str(&format!("define {} @{}({}) {{\n", return_type_str, func.name, params_str));
-                
-                // Function body
-                if let Some(ref body) = func.body {
-                    let body_ir = self.generate_function_body_ir(body, &func.parameters)?;
-                    ir.push_str(&body_ir);
-                }
-                
-                ir.push_str("}\n\n");
-                Ok(ir)
+                self.generate_function(func)?;
             }
-            _ => Ok(String::new()),
+            _ => {
+                // Other declaration types not yet implemented
+            }
         }
+        Ok(())
     }
 
-    /// Generate function body IR
-    fn generate_function_body_ir(&mut self, body: &Block, _parameters: &[Parameter]) -> Result<String> {
-        let mut ir = String::new();
+    /// Generate LLVM IR for a function
+    fn generate_function(&mut self, func: &FunctionDecl) -> Result<()> {
+        println!("生成函数: {}", func.name);
         
-        // Add entry block
-        ir.push_str("entry:\n");
+        // Get function type
+        let return_type = self.nature_type_to_llvm_type(&func.return_type)?;
+        let param_types: Vec<BasicTypeEnum> = func.parameters
+            .iter()
+            .map(|param| self.nature_type_to_llvm_type(&Some(param.param_type.clone())))
+            .collect::<Result<Vec<_>>>()?;
+        
+        // Create function type - convert to metadata types
+        let metadata_types: Vec<inkwell::types::BasicMetadataTypeEnum> = param_types
+            .iter()
+            .map(|t| (*t).into())
+            .collect();
+        let function_type = return_type.fn_type(&metadata_types, false);
+        let function = self.module.add_function(&func.name, function_type, None);
+        
+        // Set parameter names
+        for (i, param) in func.parameters.iter().enumerate() {
+            if let Some(llvm_param) = function.get_nth_param(i as u32) {
+                llvm_param.set_name(&param.name);
+            }
+        }
+        
+        // Store function in map
+        self.function_map.insert(func.name.clone(), function);
+        
+        // Generate function body if it exists
+        if let Some(ref body) = func.body {
+            self.current_function = Some(function);
+            self.generate_function_body(function, &func.parameters, body)?;
+        }
+        
+        Ok(())
+    }
+
+    /// Generate function body
+    fn generate_function_body(&mut self, function: FunctionValue<'ctx>, parameters: &[crate::ast::types::Parameter], body: &Block) -> Result<()> {
+        // Create entry block
+        let entry_block = self.context.append_basic_block(function, "entry");
+        self.builder.position_at_end(entry_block);
+        
+        // 将函数参数添加到变量映射中
+        for (i, param_decl) in parameters.iter().enumerate() {
+            if let Some(llvm_param) = function.get_nth_param(i as u32) {
+                self.variable_map.insert(param_decl.name.clone(), llvm_param);
+            }
+        }
         
         // Generate statements
-        for statement in &body.statements {
-            let stmt_ir = self.generate_statement_ir(statement)?;
-            ir.push_str(&stmt_ir);
+        let mut has_return = false;
+        for stmt in &body.statements {
+            if matches!(stmt, Statement::Return(_)) {
+                has_return = true;
+            }
+            self.generate_statement(stmt)?;
         }
         
-        // Add return if needed
-        ir.push_str("  ret void\n");
-        
-        Ok(ir)
-    }
-
-    /// Generate statement IR
-    fn generate_statement_ir(&mut self, stmt: &crate::ast::stmt::Statement) -> Result<String> {
-        match stmt {
-            crate::ast::stmt::Statement::Expression(expr) => {
-                let expr_ir = self.generate_expression_ir(expr)?;
-                Ok(format!("  {}\n", expr_ir))
-            }
-            _ => Ok(String::new()),
-        }
-    }
-
-    /// Generate expression IR
-    fn generate_expression_ir(&mut self, expr: &Expression) -> Result<String> {
-        match expr {
-            Expression::Call(call) => {
-                let callee_name = match &*call.callee {
-                    Expression::Variable(name) => name,
-                    _ => return Err(CompilerError::internal("Invalid function call")),
-                };
-                
-                let args: Vec<String> = call.arguments
-                    .iter()
-                    .map(|arg| self.generate_expression_ir(arg))
-                    .collect::<Result<Vec<_>>>()?;
-                
-                Ok(format!("call void @{}({})", callee_name, args.join(", ")))
-            }
-            Expression::Literal(lit) => {
-                match lit {
-                    crate::ast::expr::Literal::String(s) => Ok(format!("\"{}\"", s)),
-                    crate::ast::expr::Literal::Integer(i) => Ok(i.to_string()),
-                    crate::ast::expr::Literal::Float(f) => Ok(f.to_string()),
-                    _ => Ok("0".to_string()),
+        // Add return statement if function returns void or没有显式返回
+        if !has_return {
+            if function.get_type().get_return_type().is_none() {
+                let _ = self.builder.build_return(None);
+            } else {
+                // 如果函数有返回值但没有显式返回，添加默认返回
+                let return_type = function.get_type().get_return_type().unwrap();
+                match return_type {
+                    BasicTypeEnum::IntType(int_type) => {
+                        let zero = int_type.const_int(0, false);
+                        let _ = self.builder.build_return(Some(&zero));
+                    }
+                    _ => {
+                        let _ = self.builder.build_return(None);
+                    }
                 }
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Generate LLVM IR for a statement
+    fn generate_statement(&mut self, stmt: &Statement) -> Result<()> {
+        match stmt {
+            Statement::Expression(expr) => {
+                let _ = self.generate_expression(expr)?;
+            }
+            Statement::VariableDecl(var_decl) => {
+                self.generate_variable_declaration(var_decl)?;
+            }
+            Statement::Assignment(assign_stmt) => {
+                self.generate_assignment(assign_stmt)?;
+            }
+            Statement::Return(return_stmt) => {
+                self.generate_return_statement(return_stmt)?;
+            }
+            _ => {
+                // Other statement types not yet implemented
+            }
+        }
+        Ok(())
+    }
+    
+    /// Generate return statement
+    fn generate_return_statement(&mut self, return_stmt: &ReturnStmt) -> Result<()> {
+        if let Some(ref expr) = return_stmt.value {
+            let value = self.generate_expression(expr)?;
+            let _ = self.builder.build_return(Some(&value));
+        } else {
+            let _ = self.builder.build_return(None);
+        }
+        Ok(())
+    }
+
+    /// Generate variable declaration
+    fn generate_variable_declaration(&mut self, var_decl: &VariableDeclStmt) -> Result<()> {
+        let _var_type = self.nature_type_to_llvm_type(&var_decl.var_type)?;
+        
+        if let Some(ref init_expr) = var_decl.initializer {
+            let value = self.generate_expression(init_expr)?;
+            self.variable_map.insert(var_decl.name.clone(), value);
+        } else {
+            // Initialize with default value (0 for integers)
+            let default_value = self.context.i32_type().const_int(0, false).into();
+            self.variable_map.insert(var_decl.name.clone(), default_value);
+        }
+        
+        Ok(())
+    }
+
+    /// Generate assignment statement
+    fn generate_assignment(&mut self, assign_stmt: &AssignmentStmt) -> Result<()> {
+        let value = self.generate_expression(&assign_stmt.value)?;
+        
+        match &assign_stmt.target {
+            AssignmentTarget::Variable(name) => {
+                self.variable_map.insert(name.clone(), value);
+            }
+            _ => {
+                return Err(CompilerError::internal("Unsupported assignment target"));
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Generate LLVM IR for an expression
+    fn generate_expression(&mut self, expr: &Expression) -> Result<BasicValueEnum<'ctx>> {
+        match expr {
+            Expression::Literal(lit) => {
+                self.generate_literal(lit)
+            }
+            Expression::Variable(name) => {
+                self.variable_map.get(name)
+                    .cloned()
+                    .ok_or_else(|| CompilerError::internal(&format!("Undefined variable: {}", name)))
+            }
+            Expression::Call(call) => {
+                self.generate_call_expression(call)
             }
             Expression::Binary(binary) => {
-                let left = self.generate_expression_ir(&binary.left)?;
-                let right = self.generate_expression_ir(&binary.right)?;
-                let op = match binary.operator {
-                    crate::ast::expr::BinaryOp::Add => "add",
-                    crate::ast::expr::BinaryOp::Sub => "sub",
-                    crate::ast::expr::BinaryOp::Mul => "mul",
-                    crate::ast::expr::BinaryOp::Div => "sdiv",
-                    _ => "add",
-                };
-                Ok(format!("{} i32 {}, {}", op, left, right))
+                self.generate_binary_expression(binary)
             }
-            _ => Ok("0".to_string()),
+            _ => {
+                Err(CompilerError::internal("Unsupported expression type"))
+            }
         }
     }
 
-    /// Get LLVM type for Nature type
-    fn get_llvm_type(&mut self, type_: &Type) -> Result<LLVMType> {
-        if let Some(llvm_type) = self.type_map.get(type_) {
-            return Ok(llvm_type.clone());
+    /// Generate literal value
+    fn generate_literal(&self, lit: &Literal) -> Result<BasicValueEnum<'ctx>> {
+                match lit {
+            Literal::Integer(i) => {
+                Ok(self.context.i32_type().const_int(*i as u64, false).into())
+            }
+            Literal::Float(f) => {
+                Ok(self.context.f64_type().const_float(*f).into())
+            }
+            Literal::String(s) => {
+                // 处理转义字符
+                let processed_string = s.replace("\\n", "\n")
+                    .replace("\\t", "\t")
+                    .replace("\\r", "\r")
+                    .replace("\\\\", "\\")
+                    .replace("\\\"", "\"");
+                
+                // Create global string constant with null terminator
+                let string_bytes = processed_string.as_bytes();
+                let string_type = self.context.i8_type().array_type(string_bytes.len() as u32 + 1);
+                let string_value = self.context.const_string(string_bytes, true); // true = null terminated
+                let global_string = self.module.add_global(string_type, None, "str");
+                global_string.set_initializer(&string_value);
+                global_string.set_constant(true);
+                Ok(global_string.as_pointer_value().into())
+            }
+            Literal::Boolean(b) => {
+                Ok(self.context.bool_type().const_int(*b as u64, false).into())
+            }
+            _ => {
+                Err(CompilerError::internal("Unsupported literal type"))
+            }
+        }
+    }
+
+    /// Generate function call
+    fn generate_call_expression(&mut self, call: &CallExpr) -> Result<BasicValueEnum<'ctx>> {
+        let callee_name = match &*call.callee {
+            Expression::Variable(name) => name,
+            _ => return Err(CompilerError::internal("Invalid function call")),
+        };
+        
+        // 特殊处理 println 和 print 函数
+        if callee_name == "println" || callee_name == "print" {
+            return self.generate_print_call(callee_name, &call.arguments);
         }
         
-        let llvm_type = match type_ {
-            Type::Basic(basic_type) => {
-                match basic_type {
-                    crate::ast::types::BasicType::I8 => LLVMType::Int(8),
-                    crate::ast::types::BasicType::I16 => LLVMType::Int(16),
-                    crate::ast::types::BasicType::I32 => LLVMType::Int(32),
-                    crate::ast::types::BasicType::I64 => LLVMType::Int(64),
-                    crate::ast::types::BasicType::U8 => LLVMType::Int(8),
-                    crate::ast::types::BasicType::U16 => LLVMType::Int(16),
-                    crate::ast::types::BasicType::U32 => LLVMType::Int(32),
-                    crate::ast::types::BasicType::U64 => LLVMType::Int(64),
-                    crate::ast::types::BasicType::F32 => LLVMType::Float(32),
-                    crate::ast::types::BasicType::F64 => LLVMType::Float(64),
-                    crate::ast::types::BasicType::Bool => LLVMType::Int(1),
-                    crate::ast::types::BasicType::Char => LLVMType::Int(8),
-                    crate::ast::types::BasicType::String => LLVMType::Pointer(Box::new(LLVMType::Int(8))),
-                    crate::ast::types::BasicType::Void => LLVMType::Void,
-                    crate::ast::types::BasicType::Any => LLVMType::Int(64), // Pointer-sized
-                    _ => LLVMType::Int(32), // Default to i32
+        let function = *self.function_map.get(callee_name)
+            .ok_or_else(|| CompilerError::internal(&format!("Undefined function: {}", callee_name)))?;
+        
+        // Generate arguments
+        let args: Vec<BasicMetadataValueEnum> = call.arguments
+            .iter()
+            .map(|arg| {
+                let value = self.generate_expression(arg)?;
+                Ok(value.into())
+            })
+            .collect::<Result<Vec<_>>>()?;
+        
+        // Build call
+        let call_result = self.builder.build_call(function, &args, "call");
+        
+        // Handle return value
+        if function.get_type().get_return_type().is_none() {
+            Ok(self.context.i32_type().const_int(0, false).into())
+        } else {
+            let result = call_result?.try_as_basic_value().left().unwrap();
+            Ok(result)
+        }
+    }
+    
+    /// Generate print/println call
+    fn generate_print_call(&mut self, func_name: &str, arguments: &[Expression]) -> Result<BasicValueEnum<'ctx>> {
+        let printf_func = self.module.get_function("printf")
+            .ok_or_else(|| CompilerError::internal("printf function not found"))?;
+        let putchar_func = self.module.get_function("putchar")
+            .ok_or_else(|| CompilerError::internal("putchar function not found"))?;
+        
+        // 处理每个参数
+        for arg in arguments {
+            let value = self.generate_expression(arg)?;
+            match value {
+                BasicValueEnum::PointerValue(ptr) => {
+                    // 字符串参数，直接打印
+                    let _ = self.builder.build_call(printf_func, &[ptr.into()], "printf_call");
+                }
+                BasicValueEnum::IntValue(int_val) => {
+                    // 整数参数，需要格式化字符串
+                    let format_str = self.builder.build_global_string_ptr("%d", "format_str")?;
+                    let _ = self.builder.build_call(printf_func, &[format_str.as_pointer_value().into(), int_val.into()], "printf_int_call");
+                }
+                BasicValueEnum::FloatValue(float_val) => {
+                    // 浮点数参数，需要格式化字符串
+                    let format_str = self.builder.build_global_string_ptr("%f", "format_str")?;
+                    let _ = self.builder.build_call(printf_func, &[format_str.as_pointer_value().into(), float_val.into()], "printf_float_call");
+                }
+                _ => {
+                    return Err(CompilerError::internal("Unsupported argument type for print"));
                 }
             }
-            Type::Pointer(_) => {
-                // 简化处理：所有指针都作为 i8*
-                LLVMType::Pointer(Box::new(LLVMType::Int(8)))
-            }
-            Type::Array(_) => {
-                // 简化处理：数组作为指针
-                LLVMType::Pointer(Box::new(LLVMType::Int(8)))
-            }
-            Type::Struct(_) => {
-                // 简化处理：结构体作为指针
-                LLVMType::Pointer(Box::new(LLVMType::Int(8)))
-            }
-            Type::Function(_) => {
-                // 简化处理：函数作为指针
-                LLVMType::Pointer(Box::new(LLVMType::Int(8)))
-            }
-            _ => LLVMType::Int(32), // Default to i32
-        };
+        }
         
-        self.type_map.insert(type_.clone(), llvm_type.clone());
-        Ok(llvm_type)
+        // 如果是 println，添加换行符
+        if func_name == "println" {
+            let newline = self.context.i32_type().const_int('\n' as u64, false);
+            let _ = self.builder.build_call(putchar_func, &[newline.into()], "putchar_call");
+        }
+        
+        Ok(self.context.i32_type().const_int(0, false).into())
     }
 
-    /// Get LLVM function type
-    fn get_llvm_function_type(&mut self, func: &FunctionDecl) -> Result<LLVMType> {
-        let return_type = if let Some(ref ret_type) = func.return_type {
-            self.get_llvm_type(ret_type)?
-        } else {
-            LLVMType::Void
-        };
+    /// Generate binary expression
+    fn generate_binary_expression(&mut self, binary: &BinaryExpr) -> Result<BasicValueEnum<'ctx>> {
+        let left = self.generate_expression(&binary.left)?;
+        let right = self.generate_expression(&binary.right)?;
         
-        let param_types: Result<Vec<LLVMType>> = func.parameters
-            .iter()
-            .map(|param| self.get_llvm_type(&param.param_type))
-            .collect();
-        
-        Ok(LLVMType::Function(Box::new(return_type), param_types?))
-    }
-
-    /// Convert LLVM type to string
-    fn llvm_type_to_string(&self, llvm_type: &LLVMType) -> String {
-        match llvm_type {
-            LLVMType::Int(bits) => format!("i{}", bits),
-            LLVMType::Float(bits) => format!("f{}", bits),
-            LLVMType::Pointer(pointee) => format!("{}*", self.llvm_type_to_string(pointee)),
-            LLVMType::Array(size, element) => format!("[{} x {}]", size, self.llvm_type_to_string(element)),
-            LLVMType::Struct(fields) => {
-                let field_strs: Vec<String> = fields.iter().map(|f| self.llvm_type_to_string(f)).collect();
-                format!("{{ {} }}", field_strs.join(", "))
+        match binary.operator {
+            BinaryOp::Add => {
+                match (left, right) {
+                    (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) => {
+                        Ok(self.builder.build_int_add(l, r, "add")?.into())
+                    }
+                    (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) => {
+                        Ok(self.builder.build_float_add(l, r, "fadd")?.into())
+                    }
+                    _ => Err(CompilerError::internal("Type mismatch in addition")),
+                }
             }
-            LLVMType::Function(return_type, param_types) => {
-                let return_str = self.llvm_type_to_string(return_type);
-                let param_strs: Vec<String> = param_types.iter().map(|p| self.llvm_type_to_string(p)).collect();
-                format!("{} ({})", return_str, param_strs.join(", "))
+            BinaryOp::Sub => {
+                match (left, right) {
+                    (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) => {
+                        Ok(self.builder.build_int_sub(l, r, "sub")?.into())
+                    }
+                    (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) => {
+                        Ok(self.builder.build_float_sub(l, r, "fsub")?.into())
+                    }
+                    _ => Err(CompilerError::internal("Type mismatch in subtraction")),
+                }
             }
-            LLVMType::Void => "void".to_string(),
+            BinaryOp::Mul => {
+                match (left, right) {
+                    (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) => {
+                        Ok(self.builder.build_int_mul(l, r, "mul")?.into())
+                    }
+                    (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) => {
+                        Ok(self.builder.build_float_mul(l, r, "fmul")?.into())
+                    }
+                    _ => Err(CompilerError::internal("Type mismatch in multiplication")),
+                }
+            }
+            BinaryOp::Div => {
+                match (left, right) {
+                    (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) => {
+                        Ok(self.builder.build_int_signed_div(l, r, "div")?.into())
+                    }
+                    (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) => {
+                        Ok(self.builder.build_float_div(l, r, "fdiv")?.into())
+                    }
+                    _ => Err(CompilerError::internal("Type mismatch in division")),
+                }
+            }
+            BinaryOp::Assign => {
+                // Assignment is handled in generate_assignment
+                Ok(right)
+            }
+            _ => {
+                Err(CompilerError::internal("Unsupported binary operator"))
+            }
         }
     }
 
-    /// Check if backend is empty
-    pub fn is_empty(&self) -> bool {
-        self.type_map.is_empty() && self.function_map.is_empty() && self.variable_map.is_empty()
-    }
-
-    /// Get type map
-    pub fn type_map(&self) -> &HashMap<Type, LLVMType> {
-        &self.type_map
-    }
-
-    /// Get function map
-    pub fn function_map(&self) -> &HashMap<String, LLVMFunction> {
-        &self.function_map
-    }
-
-    /// Get variable map
-    pub fn variable_map(&self) -> &HashMap<String, LLVMValue> {
-        &self.variable_map
-    }
-}
-
-impl Default for LLVMBackend {
-    fn default() -> Self {
-        Self::new("default")
-    }
-}
-
-impl LLVMType {
-    #[allow(dead_code)]
-    fn get_struct_fields(&self) -> &Vec<LLVMType> {
-        match self {
-            LLVMType::Struct(fields) => fields,
-            _ => panic!("Not a struct type"),
+    /// Convert Nature type to LLVM type
+    fn nature_type_to_llvm_type(&self, nature_type: &Option<Type>) -> Result<BasicTypeEnum<'ctx>> {
+        match nature_type {
+            Some(Type::Basic(basic_type)) => {
+                match basic_type {
+                    types::BasicType::Int => Ok(self.context.i32_type().into()),
+                    types::BasicType::F64 => Ok(self.context.f64_type().into()),
+                    types::BasicType::String => Ok(self.context.i8_type().ptr_type(AddressSpace::default()).into()),
+                    types::BasicType::Bool => Ok(self.context.bool_type().into()),
+                    _ => Err(CompilerError::internal("Unsupported basic type")),
+                }
+            }
+            None => Ok(self.context.i32_type().into()), // Default to int for void
+            _ => Err(CompilerError::internal("Unsupported type")),
         }
     }
+
+    /// Generate executable file
+    pub fn generate_executable(&self, output_path: &str) -> Result<()> {
+        
+        // 使用 llc 和 gcc 生成可执行文件
+        self.try_generate_native_executable(output_path)?;
+        
+        Ok(())
+    }
+    
+    /// Try to generate native executable using llc and gcc
+    fn try_generate_native_executable(&self, output_path: &str) -> Result<()> {
+        use std::process::Command;
+        use std::fs;
+        
+        // Create temporary directory
+        let temp_dir = std::env::temp_dir().join("nature_llvm_compile");
+        fs::create_dir_all(&temp_dir)?;
+        
+        // Write LLVM IR to file
+        let ir_file = temp_dir.join("output.ll");
+        fs::write(&ir_file, self.module.print_to_string().to_string())?;
+        
+        // Use llc to compile LLVM IR to object file
+        let obj_file = temp_dir.join("output.o");
+        let llc_result = Command::new("llc-15")
+            .arg("-filetype=obj")
+            .arg(&ir_file)
+            .arg("-o")
+            .arg(&obj_file)
+            .output();
+            
+        if llc_result.is_err() {
+            return Err(CompilerError::internal("llc not found"));
+        }
+        
+        // 使用gcc链接（最稳定，自动处理库依赖）
+        let link_result = Command::new("gcc")
+            .arg("-no-pie")
+            .arg(&obj_file)
+            .arg("-o")
+            .arg(output_path)
+            .output();
+            
+        if link_result.is_err() {
+            return Err(CompilerError::internal("linker not found or failed"));
+        }
+        
+        println!("可执行文件已生成: {}", output_path);
+        println!("LLVM IR 文件: {}", ir_file.display());
+        println!("对象文件: {}", obj_file.display());
+        
+        Ok(())
+    }
+    
+    
 }
