@@ -247,7 +247,8 @@ mod tests {
     fn test_type_check_system_creation() {
         let system = TypeCheckSystem::new();
         assert!(system.type_inference().is_empty());
-        assert!(system.type_checker().is_empty());
+        // Type checker is not empty because it contains built-in functions
+        assert!(!system.type_checker().is_empty());
     }
 
     #[test]

@@ -641,7 +641,6 @@ fn parse_pattern(parser: &mut Parser) -> Result<Option<crate::ast::expr::Pattern
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lexer::Lexer;
 
     #[test]
     fn test_parse_variable_declaration() {

@@ -780,11 +780,10 @@ fn parse_attributes(parser: &mut Parser) -> Result<Vec<Attribute>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lexer::Lexer;
 
     #[test]
     fn test_parse_function_declaration() {
-        let source = "fn add(a: int, b: int) -> int { return a + b; }".to_string();
+        let source = "fn add(int a, int b): int { return a + b; }".to_string();
         let mut parser = Parser::new(source, None);
         parser.advance().unwrap();
         
@@ -818,13 +817,17 @@ mod tests {
 
     #[test]
     fn test_parse_import_declaration() {
-        let source = r#"import "std/io" as io;"#.to_string();
+        let source = r#"import { printf, println } from "./std/io.n""#.to_string();
         let mut parser = Parser::new(source, None);
         parser.advance().unwrap();
         
         let decl = parse_import_declaration(&mut parser).unwrap();
-        assert_eq!(decl.path, "std/io");
-        assert_eq!(decl.alias, Some("io".to_string()));
+        assert_eq!(decl.path, "./std/io.n");
+        assert!(decl.items.is_some());
+        let items = decl.items.unwrap();
+        assert_eq!(items.len(), 2);
+        assert!(items.contains(&"printf".to_string()));
+        assert!(items.contains(&"println".to_string()));
     }
 }
 

@@ -236,7 +236,7 @@ mod tests {
     #[test]
     fn test_lexer_basic() {
         let source = "fn main() { return 42; }".to_string();
-        let mut lexer = Lexer::new(source);
+        let lexer = Lexer::new(source);
         
         let tokens: Result<Vec<_>> = lexer.collect();
         let tokens = tokens.unwrap();
@@ -268,7 +268,7 @@ mod tests {
     #[test]
     fn test_lexer_multiline() {
         let source = "fn main() {\n    return 42;\n}".to_string();
-        let mut lexer = Lexer::new(source);
+        let lexer = Lexer::new(source);
         
         let tokens: Result<Vec<_>> = lexer.collect();
         let tokens = tokens.unwrap();

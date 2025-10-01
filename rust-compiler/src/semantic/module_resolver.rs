@@ -39,11 +39,17 @@ pub struct ExportInfo {
 /// Type of exported symbol
 #[derive(Debug, Clone)]
 pub enum ExportType {
+    /// Function export
     Function,
+    /// Variable export
     Variable,
+    /// Constant export
     Constant,
+    /// Type export
     Type,
+    /// Struct export
     Struct,
+    /// Interface export
     Interface,
 }
 

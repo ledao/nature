@@ -6,7 +6,7 @@ use nrc::error::CompilerError;
 #[test]
 fn test_lexer_basic() {
     let source = "fn main() { return 42; }".to_string();
-    let mut lexer = nrc::lexer::Lexer::new(source);
+    let lexer = nrc::lexer::Lexer::new(source);
     
     let tokens: Result<Vec<_>, _> = lexer.collect();
     assert!(tokens.is_ok());
@@ -30,7 +30,7 @@ fn test_parser_basic() {
 #[test]
 fn test_compiler_creation() {
     let config = CompilerConfig::default();
-    let compiler = Compiler::new(config);
+    let _compiler = Compiler::new(config);
     
     // Basic test that compiler can be created
     assert!(true);

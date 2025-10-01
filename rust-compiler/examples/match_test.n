@@ -1,0 +1,14 @@
+fn main() {
+    int n = 3
+    match n {
+        1|2 -> println('one or two')
+        3 -> println('three') // here
+        _ -> println('something else')
+    }
+
+    var res = match {
+        (n < 0) -> 1
+        _ -> 2
+    }
+    println(res) // 2
+}

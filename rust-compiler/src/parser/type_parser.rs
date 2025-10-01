@@ -471,7 +471,7 @@ mod tests {
     #[test]
     fn test_parse_basic_type() {
         let source = "int".to_string();
-        let mut lexer = Lexer::new(source.clone());
+        let _lexer = Lexer::new(source.clone());
         let mut parser = Parser::new(source, None);
         parser.advance().unwrap();
         

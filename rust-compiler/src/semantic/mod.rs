@@ -389,7 +389,8 @@ mod tests {
     #[test]
     fn test_semantic_analyzer_creation() {
         let analyzer = SemanticAnalyzer::new();
-        assert!(analyzer.symbol_table().is_empty());
+        // Symbol table is not empty because it contains built-in functions
+        assert!(analyzer.symbol_table().current_level() == 0);
     }
 
     #[test]
