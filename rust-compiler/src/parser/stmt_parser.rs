@@ -77,6 +77,10 @@ pub fn parse_statement(parser: &mut Parser) -> Result<Option<Statement>> {
                 let stmt = parse_go_statement(parser)?;
                 Ok(Some(Statement::Go(stmt)))
             }
+            Token::Export => {
+                let stmt = parse_export_statement(parser)?;
+                Ok(Some(Statement::Export(stmt)))
+            }
             Token::LeftBrace => {
                 let stmt = parse_block_statement(parser)?;
                 Ok(Some(Statement::Block(stmt)))
@@ -678,4 +682,48 @@ mod tests {
         let stmt = parse_statement(&mut parser).unwrap();
         assert!(matches!(stmt, Some(Statement::For(_))));
     }
+}
+
+/// Parse export statement
+pub fn parse_export_statement(parser: &mut Parser) -> Result<ExportStmt> {
+    parser.expect(&Token::Export)?;
+    
+    let mut items = Vec::new();
+    
+    // Parse export items
+    if parser.consume(&Token::LeftBrace)? {
+        // Named exports: { add, PI }
+        loop {
+            if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+                let name = name.clone();
+                parser.advance()?;
+                items.push(ExportItem::Function(name));
+                
+                if parser.consume(&Token::Comma)? {
+                    continue;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        parser.expect(&Token::RightBrace)?;
+    } else if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+        // Single export: export fn add
+        let name = name.clone();
+        parser.advance()?;
+        items.push(ExportItem::Function(name));
+    } else {
+        return Err(CompilerError::syntax(
+            parser.current_location().line,
+            parser.current_location().column,
+            "Expected export items",
+        ));
+    }
+    
+    Ok(ExportStmt {
+        items,
+        location: parser.current_location(),
+    })
 }

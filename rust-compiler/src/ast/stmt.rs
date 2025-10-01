@@ -39,6 +39,8 @@ pub enum Statement {
     Go(GoStmt),
     /// Block statement
     Block(BlockStmt),
+    /// Export statement
+    Export(ExportStmt),
     /// Empty statement
     Empty,
 }
@@ -329,6 +331,7 @@ impl Statement {
             Statement::Select(stmt) => stmt.location,
             Statement::Go(stmt) => stmt.location,
             Statement::Block(stmt) => stmt.location,
+            Statement::Export(stmt) => stmt.location,
             Statement::Empty => Location::new(0, 0, 0),
         }
     }
@@ -383,4 +386,26 @@ mod tests {
 
         assert!(matches!(stmt, Statement::Return(_)));
     }
+}
+
+/// Export statement
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportStmt {
+    /// Export items (what to export)
+    pub items: Vec<ExportItem>,
+    /// Location in source
+    pub location: Location,
+}
+
+/// Export item
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ExportItem {
+    /// Export function
+    Function(String),
+    /// Export variable
+    Variable(String),
+    /// Export type
+    Type(String),
+    /// Export with alias
+    Alias(String, String), // original_name, alias_name
 }

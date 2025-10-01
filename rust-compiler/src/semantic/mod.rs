@@ -1,17 +1,19 @@
 //! Semantic analysis for Nature language
 
 use crate::ast::*;
-use crate::error::Result;
+use crate::error::{Result, CompilerError};
 
 pub mod symbol_table;
 pub mod scope_analyzer;
 pub mod name_resolver;
 pub mod semantic_checker;
+pub mod module_resolver;
 
 use symbol_table::*;
 use scope_analyzer::*;
 use name_resolver::*;
 use semantic_checker::*;
+use module_resolver::*;
 
 /// Semantic analyzer for Nature language
 pub struct SemanticAnalyzer {
@@ -23,6 +25,8 @@ pub struct SemanticAnalyzer {
     name_resolver: NameResolver,
     /// Semantic checker
     semantic_checker: SemanticChecker,
+    /// Module resolver
+    module_resolver: ModuleResolver,
 }
 
 impl SemanticAnalyzer {
@@ -33,6 +37,7 @@ impl SemanticAnalyzer {
             scope_analyzer: ScopeAnalyzer::new(),
             name_resolver: NameResolver::new(),
             semantic_checker: SemanticChecker::new(),
+            module_resolver: ModuleResolver::new(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
         }
     }
 
@@ -79,7 +84,8 @@ impl SemanticAnalyzer {
                     self.symbol_table.insert_interface(interface)?;
                 }
                 Declaration::Import(import) => {
-                    self.symbol_table.insert_import(import)?;
+                    // Resolve the import and add imported symbols to symbol table
+                    self.resolve_and_add_import(import)?;
                 }
             }
         }
@@ -137,6 +143,76 @@ impl SemanticAnalyzer {
     /// Get mutable reference to symbol table
     pub fn symbol_table_mut(&mut self) -> &mut SymbolTable {
         &mut self.symbol_table
+    }
+
+    /// Resolve an import and add imported symbols to symbol table
+    fn resolve_and_add_import(&mut self, import: &ImportDecl) -> Result<()> {
+        // Resolve the module
+        self.module_resolver.resolve_import(import)?;
+        
+        // Get the resolved module
+        let module_path = self.module_resolver.resolve_module_path(&import.path)?;
+        
+        // Collect declarations to add
+        let mut declarations_to_add = Vec::new();
+        
+        if let Some(module) = self.module_resolver.get_module(&module_path) {
+            if let Some(items) = &import.items {
+                // Named imports: { printf, println }
+                for item_name in items {
+                    if let Some(export_info) = module.exports.get(item_name) {
+                        declarations_to_add.push(export_info.declaration.clone());
+                    } else {
+                        return Err(CompilerError::semantic(
+                            import.location.line,
+                            import.location.column,
+                            format!("Symbol '{}' not found in module '{}'", item_name, import.path),
+                        ));
+                    }
+                }
+            } else {
+                // Namespace import: * as namespace
+                // Add all exported symbols with namespace prefix
+                for (_name, export_info) in &module.exports {
+                    declarations_to_add.push(export_info.declaration.clone());
+                }
+            }
+        } else {
+            return Err(CompilerError::internal(&format!("Module '{}' not found", module_path)));
+        }
+
+        // Add collected declarations to symbol table
+        for decl in declarations_to_add {
+            self.add_imported_symbol(&decl)?;
+        }
+
+        Ok(())
+    }
+
+    /// Add an imported symbol to the symbol table
+    fn add_imported_symbol(&mut self, decl: &Declaration) -> Result<()> {
+        match decl {
+            Declaration::Function(func) => {
+                self.symbol_table.insert_function(func)?;
+            }
+            Declaration::Variable(var) => {
+                self.symbol_table.insert_variable(var)?;
+            }
+            Declaration::Constant(const_) => {
+                self.symbol_table.insert_constant(const_)?;
+            }
+            Declaration::Type(type_) => {
+                self.symbol_table.insert_type(type_)?;
+            }
+            Declaration::Struct(struct_) => {
+                self.symbol_table.insert_struct(struct_)?;
+            }
+            Declaration::Interface(interface) => {
+                self.symbol_table.insert_interface(interface)?;
+            }
+            _ => {} // Ignore other declaration types
+        }
+        Ok(())
     }
 }
 

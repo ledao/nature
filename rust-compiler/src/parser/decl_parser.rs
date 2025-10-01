@@ -514,80 +514,71 @@ pub fn parse_interface_declaration(parser: &mut Parser) -> Result<InterfaceDecl>
 pub fn parse_import_declaration(parser: &mut Parser) -> Result<ImportDecl> {
     parser.expect(&Token::Import)?;
     
+    // JavaScript-style import: import { name1, name2 } from "./path"
+    // or: import * as namespace from "./path"
+    let items = if parser.consume(&Token::LeftBrace)? {
+        // Named imports: { add, PI }
+        let mut imported_items = Vec::new();
+        loop {
+            if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+                let name = name.clone();
+                parser.advance()?;
+                imported_items.push(name);
+                
+                if parser.consume(&Token::Comma)? {
+                    continue;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        parser.expect(&Token::RightBrace)?;
+        Some(imported_items)
+    } else if parser.consume(&Token::Asterisk)? {
+        // Namespace import: * as utils
+        parser.expect(&Token::As)?;
+        if let Some(Token::Identifier(_name)) = parser.peek().map(|t| &t.token) {
+            parser.advance()?;
+        } else {
+            return Err(CompilerError::syntax(
+                parser.current_location().line,
+                parser.current_location().column,
+                "Expected identifier after 'as'",
+            ));
+        }
+        None  // * as imports all
+    } else {
+        return Err(CompilerError::syntax(
+            parser.current_location().line,
+            parser.current_location().column,
+            "Expected import items: { name1, name2 } or * as namespace",
+        ));
+    };
+    
+    // Parse 'from' keyword
+    parser.expect(&Token::From)?;
+    
+    // Parse module path
     if let Some(Token::String(path)) = parser.peek().map(|t| &t.token) {
         let import_path = path.clone();
         parser.advance()?;
         
-        let items = if parser.consume(&Token::LeftBrace)? {
-            let mut imported_items = Vec::new();
-            
-            if !parser.check(&Token::RightBrace) {
-                loop {
-                    if let Some(Token::Identifier(item_name)) = parser.peek().map(|t| &t.token) {
-                        let name = item_name.clone();
-                        parser.advance()?;
-                        
-                        // Check for alias
-                        let _alias = if parser.consume(&Token::As)? {
-                            if let Some(Token::Identifier(alias_name)) = parser.peek().map(|t| &t.token) {
-                                let alias = alias_name.clone();
-                                parser.advance()?;
-                                Some(alias)
-                            } else {
-                                return Err(CompilerError::syntax(
-                                    parser.current_location().line,
-                                    parser.current_location().column,
-                                    "Expected alias name after 'as'",
-                                ));
-                            }
-                        } else {
-                            None
-                        };
-                        
-                        imported_items.push(name);
-                    }
-                    
-                    if !parser.consume(&Token::Comma)? {
-                        break;
-                    }
-                }
-            }
-            
-            parser.expect(&Token::RightBrace)?;
-            Some(imported_items)
-        } else {
-            None
-        };
-        
-        let alias = if parser.consume(&Token::As)? {
-            if let Some(Token::Identifier(alias_name)) = parser.peek().map(|t| &t.token) {
-                let alias = alias_name.clone();
-                parser.advance()?;
-                Some(alias)
-            } else {
-                return Err(CompilerError::syntax(
-                    parser.current_location().line,
-                    parser.current_location().column,
-                    "Expected alias name after 'as'",
-                ));
-            }
-        } else {
-            None
-        };
-        
-        parser.expect(&Token::Semicolon)?;
+        // Optional semicolon
+        parser.consume(&Token::Semicolon)?;
         
         Ok(ImportDecl {
             path: import_path,
             items,
-            alias,
+            alias: None,
             location: parser.current_location(),
         })
     } else {
         Err(CompilerError::syntax(
             parser.current_location().line,
             parser.current_location().column,
-            "Expected import path after 'import'",
+            "Expected import path after 'from'",
         ))
     }
 }
@@ -836,3 +827,4 @@ mod tests {
         assert_eq!(decl.alias, Some("io".to_string()));
     }
 }
+

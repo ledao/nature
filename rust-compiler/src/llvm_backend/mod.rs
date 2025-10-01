@@ -64,7 +64,8 @@ impl<'ctx> LLVMBackend<'ctx> {
         
         // 声明 printf 函数
         let printf_type = self.context.i32_type().fn_type(&[i8_ptr_type.into()], true);
-        let _printf_func = self.module.add_function("printf", printf_type, None);
+        let printf_func = self.module.add_function("printf", printf_type, None);
+        self.function_map.insert("printf".to_string(), printf_func);
         
         // 声明 putchar 函数
         let putchar_type = self.context.i32_type().fn_type(&[self.context.i32_type().into()], false);

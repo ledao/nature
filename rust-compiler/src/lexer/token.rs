@@ -93,6 +93,9 @@ pub enum Token {
     /// As keyword
     #[token("as")]
     As,
+    /// Export keyword
+    #[token("export")]
+    Export,
     /// Is keyword
     #[token("is")]
     Is,
@@ -177,6 +180,11 @@ pub enum Token {
     /// Multiplication operator
     #[token("*")]
     Star,
+    /// Asterisk (alias for Star)
+    Asterisk,
+    /// From keyword
+    #[token("from")]
+    From,
     /// Division operator
     #[token("/")]
     Slash,

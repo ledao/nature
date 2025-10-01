@@ -1,0 +1,7 @@
+// module_test.n - Test module system
+import { printf, println } from "./std/io.n"
+
+fn main() {
+    println("Hello from module system!")
+    printf("Number: %d\n", 42)
+}
