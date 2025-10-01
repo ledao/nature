@@ -413,10 +413,20 @@ pub fn parse_match_statement(parser: &mut Parser) -> Result<MatchStmt> {
 pub fn parse_return_statement(parser: &mut Parser) -> Result<ReturnStmt> {
     parser.expect(&Token::Return)?;
     
-    let value = if !parser.check(&Token::Semicolon) {
-        parse_expression(parser)?
-    } else {
+    // 检查return后面是否有返回值
+    // 如果后面是分号、换行符、右大括号，或者是新的语句关键字，则没有返回值
+    let value = if parser.check(&Token::Semicolon) 
+        || parser.check(&Token::RightBrace)
+        || parser.is_at_end()
+        || matches!(parser.peek().map(|t| &t.token), 
+            Some(Token::Var) | Some(Token::If) | Some(Token::For) | 
+            Some(Token::While) | Some(Token::Return) | Some(Token::Break) | 
+            Some(Token::Continue) | Some(Token::Defer) | Some(Token::Match) |
+            Some(Token::Identifier(_)))  // 可能是下一个语句的开始
+    {
         None
+    } else {
+        parse_expression(parser)?
     };
     
     // 可选的分号，支持无分号语法

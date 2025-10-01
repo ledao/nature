@@ -107,7 +107,6 @@ impl<'ctx> LLVMBackend<'ctx> {
 
     /// Generate LLVM IR for a function
     fn generate_function(&mut self, func: &FunctionDecl) -> Result<()> {
-        println!("生成函数: {}", func.name);
         
         // Get function type
         let return_type = self.nature_type_to_llvm_type(&func.return_type)?;
@@ -152,6 +151,7 @@ impl<'ctx> LLVMBackend<'ctx> {
         // 清空defer栈
         self.defer_stack.clear();
         
+        
         // 将函数参数添加到变量映射中
         for (i, param_decl) in parameters.iter().enumerate() {
             if let Some(llvm_param) = function.get_nth_param(i as u32) {
@@ -164,15 +164,20 @@ impl<'ctx> LLVMBackend<'ctx> {
         for stmt in &body.statements {
             if matches!(stmt, Statement::Return(_)) {
                 has_return = true;
+                // 遇到return语句，先执行defer，然后生成return
+                self.execute_defer_statements()?;
+                self.generate_statement(stmt)?;
+                break; // 停止生成后续语句
+            } else {
+                self.generate_statement(stmt)?;
             }
-            self.generate_statement(stmt)?;
         }
         
-        // 在函数结束前执行所有defer语句（LIFO顺序）
-        self.execute_defer_statements()?;
-        
-        // Add return statement if function returns void or没有显式返回
+        // 如果没有遇到return语句，在函数结束前执行所有defer语句（LIFO顺序）
         if !has_return {
+            self.execute_defer_statements()?;
+            
+            // Add return statement if function returns void or没有显式返回
             if function.get_type().get_return_type().is_none() {
                 let _ = self.builder.build_return(None);
             } else {
@@ -229,14 +234,29 @@ impl<'ctx> LLVMBackend<'ctx> {
     
     /// Generate return statement
     fn generate_return_statement(&mut self, return_stmt: &ReturnStmt) -> Result<()> {
-        // 在return之前执行所有defer语句
-        self.execute_defer_statements()?;
+        // 注意：defer语句的执行应该在调用此函数之前完成
         
         if let Some(ref expr) = return_stmt.value {
             let value = self.generate_expression(expr)?;
             let _ = self.builder.build_return(Some(&value));
         } else {
-            let _ = self.builder.build_return(None);
+            // 检查函数的返回类型
+            let function = self.current_function.ok_or_else(|| CompilerError::internal("No current function"))?;
+            if function.get_type().get_return_type().is_none() {
+                let _ = self.builder.build_return(None);
+            } else {
+                // 如果函数有返回值但return语句没有值，返回默认值（0）
+                let return_type = function.get_type().get_return_type().unwrap();
+                match return_type {
+                    BasicTypeEnum::IntType(int_type) => {
+                        let zero = int_type.const_int(0, false);
+                        let _ = self.builder.build_return(Some(&zero));
+                    }
+                    _ => {
+                        let _ = self.builder.build_return(None);
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -931,9 +951,6 @@ impl<'ctx> LLVMBackend<'ctx> {
             return Err(CompilerError::internal(&format!("Linker failed: {}", error_msg)));
         }
         
-        println!("可执行文件已生成: {}", output_path);
-        println!("LLVM IR 文件: {}", ir_file.display());
-        println!("对象文件: {}", obj_file.display());
         
         Ok(())
     }

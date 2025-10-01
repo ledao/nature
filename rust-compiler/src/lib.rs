@@ -172,7 +172,6 @@ impl Compiler {
         type_checker.check_program(&program)?;
         
     // 5. 代码生成 - 使用真正的 LLVM 后端
-    println!("使用 LLVM 后端生成代码...");
     let context = inkwell::context::Context::create();
     let mut codegen = llvm_backend::LLVMBackend::new(&context, "main")?;
     codegen.generate_program(&program)?;

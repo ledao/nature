@@ -762,7 +762,24 @@ fn parse_block(parser: &mut Parser) -> Result<crate::ast::Block> {
     
     while !parser.check(&Token::RightBrace) {
         if let Some(stmt) = super::stmt_parser::parse_statement(parser)? {
+            // Check if this is a terminating statement (return, break, continue)
+            let is_terminating = matches!(stmt, 
+                crate::ast::stmt::Statement::Return(_) | 
+                crate::ast::stmt::Statement::Break(_) | 
+                crate::ast::stmt::Statement::Continue(_)
+            );
+            
             statements.push(stmt);
+            
+            // If we encountered a terminating statement, stop parsing
+            // Skip any remaining statements until we reach the closing brace
+            if is_terminating {
+                // Consume all tokens until we find the closing brace
+                while !parser.check(&Token::RightBrace) && !parser.is_at_end() {
+                    parser.advance()?;
+                }
+                break;
+            }
         } else {
             break;
         }

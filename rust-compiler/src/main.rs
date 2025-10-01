@@ -3,7 +3,6 @@
 //! Command-line interface for the Nature programming language compiler
 
 use clap::{Parser, Subcommand};
-use log::info;
 use nrc::{Compiler, CompilerConfig, OptLevel};
 use std::path::PathBuf;
 
@@ -90,7 +89,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             strip,
             output_dir,
         } => {
-            info!("Building Nature source file: {:?}", input);
             
             // Parse target platform
             let (target_arch, target_os) = if let Some(target_str) = target {
@@ -121,11 +119,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let compiler = Compiler::new(config);
             compiler.compile_file(input.to_str().unwrap())?;
             
-            println!("Build completed successfully!");
         }
         
         Commands::Run { input } => {
-            info!("Running Nature source file: {:?}", input);
             
             // Create temporary output path
             let temp_output = std::env::temp_dir().join("nature_temp_run");
@@ -165,7 +161,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             target,
             output,
         } => {
-            info!("Cross-compiling {:?} for target: {}", input, target);
             
             // Parse target platform
             let parts: Vec<&str> = target.split('/').collect();
@@ -192,13 +187,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let compiler = Compiler::new(config);
             compiler.compile_file(input.to_str().unwrap())?;
             
-            println!("Cross-compilation completed successfully!");
         }
         
         Commands::Check { input } => {
-            info!("Checking syntax of: {:?}", input);
             // TODO: Implement syntax checking
-            println!("Syntax check completed!");
         }
         
         Commands::Version => {
