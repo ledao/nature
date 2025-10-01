@@ -580,7 +580,7 @@ pub fn parse_import_declaration(parser: &mut Parser) -> Result<ImportDecl> {
     }
 }
 
-/// Parse module path (e.g., "std.io", "xx.yy", "./path")
+/// Parse module path (e.g., "std.fmt", "xx.yy", "./path")
 fn parse_module_path(parser: &mut Parser) -> Result<String> {
     let mut path_parts = Vec::new();
     
@@ -857,13 +857,13 @@ mod tests {
 
     #[test]
     fn test_parse_import_declaration() {
-        // Test: from std.io import printf, println
-        let source = "from std.io import printf, println".to_string();
+        // Test: from fmt import printf, println
+        let source = "from fmt import printf, println".to_string();
         let mut parser = Parser::new(source, None);
         parser.advance().unwrap();
         
         let decl = parse_import_declaration(&mut parser).unwrap();
-        assert_eq!(decl.path, "std.io");
+        assert_eq!(decl.path, "fmt");
         assert!(decl.items.is_some());
         let items = decl.items.unwrap();
         assert_eq!(items.len(), 2);
@@ -873,26 +873,26 @@ mod tests {
     
     #[test]
     fn test_parse_import_with_alias() {
-        // Test: import std.io as io
-        let source = "import std.io as io".to_string();
+        // Test: import std.fmt as io
+        let source = "import std.fmt as io".to_string();
         let mut parser = Parser::new(source, None);
         parser.advance().unwrap();
         
         let decl = parse_import_declaration(&mut parser).unwrap();
-        assert_eq!(decl.path, "std.io");
+        assert_eq!(decl.path, "fmt");
         assert!(decl.items.is_none());
         assert_eq!(decl.alias, Some("io".to_string()));
     }
     
     #[test]
     fn test_parse_simple_import() {
-        // Test: import std.io
-        let source = "import std.io".to_string();
+        // Test: import std.fmt
+        let source = "import std.fmt".to_string();
         let mut parser = Parser::new(source, None);
         parser.advance().unwrap();
         
         let decl = parse_import_declaration(&mut parser).unwrap();
-        assert_eq!(decl.path, "std.io");
+        assert_eq!(decl.path, "fmt");
         assert!(decl.items.is_none());
         assert!(decl.alias.is_none());
     }

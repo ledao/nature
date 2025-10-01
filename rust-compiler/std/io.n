@@ -1,17 +1,5 @@
 // std/io.n - Standard I/O module for Nature
-// Provides printf and println functions
+// Provides input/output operations
 
-fn printf(string format) {
-    // Implementation will be handled by LLVM backend
-    // This is just a declaration for the module system
-}
-
-fn println() {
-    // Implementation will be handled by LLVM backend
-    // This is just a declaration for the module system
-}
-
-fn print() {
-    // Implementation will be handled by LLVM backend
-    // This is just a declaration for the module system
-}
+// TODO: Add file I/O functions, stream operations, etc.
+// For now, this module is empty as print functions have been moved to std.fmt

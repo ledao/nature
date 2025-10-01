@@ -183,7 +183,7 @@ impl SemanticAnalyzer {
                 }
             } else {
                 // import xx.yy - whole module import
-                // Extract module name from path (e.g., "std.io" -> "io")
+                // Extract module name from path (e.g., "std.fmt" -> "fmt")
                 let module_name = import.path.split('.').last().unwrap_or("module");
                 // Add all exported symbols with module name prefix
                 for (name, export_info) in &module.exports {

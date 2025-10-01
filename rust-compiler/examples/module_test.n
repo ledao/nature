@@ -1,5 +1,5 @@
 // module_test.n - Test Python-style module system
-from std.io import printf, println
+from fmt import printf, println
 
 fn main() {
     println("Hello from Python-style module system!")

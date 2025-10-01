@@ -77,17 +77,24 @@ impl ModuleResolver {
 
     /// Resolve module path from import path
     pub fn resolve_module_path(&self, import_path: &str) -> Result<String> {
-        // Python-style module path: std.io, xx.yy, etc.
+        // Python-style module path: fmt, io, xx.yy, etc.
         let path = import_path.trim_matches('"');
         
         // Handle relative paths
         if path.starts_with("./") || path.starts_with("../") {
             let full_path = self.base_dir.join(path);
             Ok(full_path.to_string_lossy().to_string())
+        } else if self.is_std_module(&path) {
+            // Handle std modules: fmt -> std/fmt.n, io -> std/io.n
+            // Find the std directory relative to the compiler executable
+            let module_path = path.to_string() + ".n";
+            let std_path = self.find_std_directory()?.join(module_path);
+            Ok(std_path.to_string_lossy().to_string())
         } else if path.starts_with("std.") {
-            // Handle std modules: std.io -> std/io.n
-            let module_path = path.replace(".", "/") + ".n";
-            let std_path = self.base_dir.join(module_path);
+            // Handle legacy std modules: std.fmt -> std/fmt.n (for backward compatibility)
+            let module_name = path.strip_prefix("std.").unwrap();
+            let module_path = module_name.to_string() + ".n";
+            let std_path = self.find_std_directory()?.join(module_path);
             Ok(std_path.to_string_lossy().to_string())
         } else if path.contains(".") {
             // Handle dotted module paths: xx.yy -> xx/yy.n
@@ -207,5 +214,64 @@ impl ModuleResolver {
     /// Get all loaded modules
     pub fn get_modules(&self) -> &HashMap<String, Module> {
         &self.modules
+    }
+
+    /// Find the std directory relative to the compiler executable
+    fn find_std_directory(&self) -> Result<PathBuf> {
+        // Try to find the std directory relative to the current executable
+        let exe_path = std::env::current_exe()
+            .map_err(|e| CompilerError::internal(&format!("Failed to get current executable path: {}", e)))?;
+        
+        // Get the directory containing the executable
+        let exe_dir = exe_path.parent()
+            .ok_or_else(|| CompilerError::internal("Failed to get executable directory"))?;
+        
+        // Look for std directory in several possible locations:
+        // 1. ./std (relative to executable)
+        // 2. ../std (one level up from executable)
+        // 3. ../../std (two levels up from executable)
+        let possible_paths = vec![
+            exe_dir.join("std"),
+            exe_dir.join("../std"),
+            exe_dir.join("../../std"),
+            exe_dir.join("../../../std"),
+        ];
+        
+        for path in possible_paths {
+            if path.exists() && path.is_dir() {
+                return Ok(path);
+            }
+        }
+        
+        // If not found, try relative to current working directory
+        let cwd_std = std::env::current_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."))
+            .join("std");
+        
+        if cwd_std.exists() && cwd_std.is_dir() {
+            return Ok(cwd_std);
+        }
+        
+        Err(CompilerError::internal("Could not find std directory. Please ensure the std directory exists relative to the compiler executable or in the current working directory."))
+    }
+
+    /// Check if a module name is a standard library module
+    fn is_std_module(&self, module_name: &str) -> bool {
+        // List of standard library modules
+        let std_modules = vec![
+            "fmt",    // Formatting functions (printf, println, print)
+            "io",     // Input/Output operations
+            "math",   // Mathematical functions
+            "string", // String manipulation
+            "array",  // Array operations
+            "map",    // Map/dictionary operations
+            "time",   // Time operations
+            "os",     // Operating system interface
+            "net",    // Network operations
+            "json",   // JSON parsing
+            "http",   // HTTP client/server
+        ];
+        
+        std_modules.contains(&module_name)
     }
 }
