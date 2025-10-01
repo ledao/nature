@@ -61,6 +61,10 @@ pub fn parse_statement(parser: &mut Parser) -> Result<Option<Statement>> {
                 let stmt = parse_continue_statement(parser)?;
                 Ok(Some(Statement::Continue(stmt)))
             }
+            Token::Defer => {
+                let stmt = parse_defer_statement(parser)?;
+                Ok(Some(Statement::Defer(stmt)))
+            }
             Token::Try => {
                 let stmt = parse_try_statement(parser)?;
                 Ok(Some(Statement::Try(stmt)))
@@ -775,6 +779,36 @@ mod tests {
         let stmt = parse_statement(&mut parser).unwrap();
         assert!(matches!(stmt, Some(Statement::For(_))));
     }
+
+    #[test]
+    fn test_parse_defer_statement() {
+        let source = "defer println(\"hello\");".to_string();
+        let mut parser = Parser::new(source, None);
+        parser.advance().unwrap();
+        
+        let stmt = parse_defer_statement(&mut parser).unwrap();
+        assert!(matches!(stmt.expr, Expression::Call(_)));
+    }
+
+    #[test]
+    fn test_parse_defer_statement_no_semicolon() {
+        let source = "defer println(\"hello\")".to_string();
+        let mut parser = Parser::new(source, None);
+        parser.advance().unwrap();
+        
+        let stmt = parse_defer_statement(&mut parser).unwrap();
+        assert!(matches!(stmt.expr, Expression::Call(_)));
+    }
+
+    #[test]
+    fn test_parse_defer_statement_with_literal() {
+        let source = "defer 42;".to_string();
+        let mut parser = Parser::new(source, None);
+        parser.advance().unwrap();
+        
+        let stmt = parse_defer_statement(&mut parser).unwrap();
+        assert!(matches!(stmt.expr, Expression::Literal(_)));
+    }
 }
 
 /// Parse export statement
@@ -820,3 +854,26 @@ pub fn parse_export_statement(parser: &mut Parser) -> Result<ExportStmt> {
         location: parser.current_location(),
     })
 }
+
+/// Parse defer statement
+pub fn parse_defer_statement(parser: &mut Parser) -> Result<DeferStmt> {
+    parser.expect(&Token::Defer)?;
+    
+    let expr = parse_expression(parser)?;
+    if expr.is_none() {
+        return Err(CompilerError::syntax(
+            parser.current_location().line,
+            parser.current_location().column,
+            "Expected expression after 'defer'",
+        ));
+    }
+    
+    // 可选的分号，支持无分号语法
+    parser.consume(&Token::Semicolon)?;
+    
+    Ok(DeferStmt {
+        expr: expr.unwrap(),
+        location: parser.current_location(),
+    })
+}
+

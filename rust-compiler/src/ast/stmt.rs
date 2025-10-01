@@ -37,6 +37,8 @@ pub enum Statement {
     Select(Box<SelectStmt>),
     /// Go statement (goroutine)
     Go(GoStmt),
+    /// Defer statement
+    Defer(DeferStmt),
     /// Block statement
     Block(BlockStmt),
     /// Export statement
@@ -330,6 +332,7 @@ impl Statement {
             Statement::Throw(stmt) => stmt.location,
             Statement::Select(stmt) => stmt.location,
             Statement::Go(stmt) => stmt.location,
+            Statement::Defer(stmt) => stmt.location,
             Statement::Block(stmt) => stmt.location,
             Statement::Export(stmt) => stmt.location,
             Statement::Empty => Location::new(0, 0, 0),
@@ -394,6 +397,15 @@ pub struct ExportStmt {
     /// Export items (what to export)
     pub items: Vec<ExportItem>,
     /// Location in source
+    pub location: Location,
+}
+
+/// Defer statement
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeferStmt {
+    /// Expression to be deferred
+    pub expr: Expression,
+    /// Location in source code
     pub location: Location,
 }
 

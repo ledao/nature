@@ -1,0 +1,15 @@
+// defer_test.n - Test defer statement functionality
+import fmt
+
+fn main() {
+    fmt.println("Starting main function")
+    
+    defer fmt.println("Deferred: This should print last")
+    defer fmt.println("Deferred: This should print second")
+    
+    fmt.println("In the middle of main function")
+    
+    defer fmt.println("Deferred: This should print first")
+    
+    fmt.println("End of main function")
+}

@@ -90,6 +90,9 @@ pub enum Token {
     /// Continue keyword
     #[token("continue")]
     Continue,
+    /// Defer keyword
+    #[token("defer")]
+    Defer,
     /// As keyword
     #[token("as")]
     As,

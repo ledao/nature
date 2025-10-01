@@ -22,6 +22,8 @@ pub struct LLVMBackend<'ctx> {
     pub variable_map: HashMap<String, BasicValueEnum<'ctx>>,
     /// Current function being generated
     pub current_function: Option<FunctionValue<'ctx>>,
+    /// Defer stack for current function
+    pub defer_stack: Vec<Expression>,
 }
 
 impl<'ctx> LLVMBackend<'ctx> {
@@ -39,6 +41,7 @@ impl<'ctx> LLVMBackend<'ctx> {
             function_map: HashMap::new(),
             variable_map: HashMap::new(),
             current_function: None,
+            defer_stack: Vec::new(),
         })
     }
 
@@ -146,6 +149,9 @@ impl<'ctx> LLVMBackend<'ctx> {
         let entry_block = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(entry_block);
         
+        // 清空defer栈
+        self.defer_stack.clear();
+        
         // 将函数参数添加到变量映射中
         for (i, param_decl) in parameters.iter().enumerate() {
             if let Some(llvm_param) = function.get_nth_param(i as u32) {
@@ -161,6 +167,9 @@ impl<'ctx> LLVMBackend<'ctx> {
             }
             self.generate_statement(stmt)?;
         }
+        
+        // 在函数结束前执行所有defer语句（LIFO顺序）
+        self.execute_defer_statements()?;
         
         // Add return statement if function returns void or没有显式返回
         if !has_return {
@@ -208,6 +217,9 @@ impl<'ctx> LLVMBackend<'ctx> {
             Statement::Match(match_stmt) => {
                 self.generate_match_statement(match_stmt)?;
             }
+            Statement::Defer(defer_stmt) => {
+                self.generate_defer_statement(defer_stmt)?;
+            }
             _ => {
                 // Other statement types not yet implemented
             }
@@ -217,6 +229,9 @@ impl<'ctx> LLVMBackend<'ctx> {
     
     /// Generate return statement
     fn generate_return_statement(&mut self, return_stmt: &ReturnStmt) -> Result<()> {
+        // 在return之前执行所有defer语句
+        self.execute_defer_statements()?;
+        
         if let Some(ref expr) = return_stmt.value {
             let value = self.generate_expression(expr)?;
             let _ = self.builder.build_return(Some(&value));
@@ -497,10 +512,17 @@ impl<'ctx> LLVMBackend<'ctx> {
             let value = self.generate_expression(arg)?;
             match value {
                 BasicValueEnum::PointerValue(ptr) => {
-                    // 指针参数，需要转换为整数打印
-                    let ptr_as_int = self.builder.build_ptr_to_int(ptr, self.context.i64_type(), "ptr_as_int")?;
-                    let format_str = self.builder.build_global_string_ptr("%p", "format_str")?;
-                    let _ = self.builder.build_call(printf_func, &[format_str.as_pointer_value().into(), ptr_as_int.into()], "printf_ptr_call");
+                    // 检查是否是字符串字面量
+                    if self.is_string_literal(arg) {
+                        // 字符串字面量，使用 %s 格式符
+                        let format_str = self.builder.build_global_string_ptr("%s", "format_str")?;
+                        let _ = self.builder.build_call(printf_func, &[format_str.as_pointer_value().into(), ptr.into()], "printf_str_call");
+                    } else {
+                        // 真正的指针，使用 %p 格式符
+                        let ptr_as_int = self.builder.build_ptr_to_int(ptr, self.context.i64_type(), "ptr_as_int")?;
+                        let format_str = self.builder.build_global_string_ptr("%p", "format_str")?;
+                        let _ = self.builder.build_call(printf_func, &[format_str.as_pointer_value().into(), ptr_as_int.into()], "printf_ptr_call");
+                    }
                 }
                 BasicValueEnum::IntValue(int_val) => {
                     // 整数参数，需要格式化字符串
@@ -1030,5 +1052,26 @@ impl<'ctx> LLVMBackend<'ctx> {
         }
     }
     
+    /// Generate defer statement
+    /// Add the deferred expression to the defer stack for later execution
+    fn generate_defer_statement(&mut self, defer_stmt: &DeferStmt) -> Result<()> {
+        // 将defer表达式添加到栈中，稍后在函数退出时执行
+        self.defer_stack.push(defer_stmt.expr.clone());
+        Ok(())
+    }
+    
+    /// Check if an expression is a string literal
+    fn is_string_literal(&self, expr: &Expression) -> bool {
+        matches!(expr, Expression::Literal(crate::ast::expr::Literal::String(_)))
+    }
+    
+    /// Execute all deferred statements in LIFO order
+    fn execute_defer_statements(&mut self) -> Result<()> {
+        // 按照LIFO顺序执行defer语句（后进先出）
+        while let Some(defer_expr) = self.defer_stack.pop() {
+            let _ = self.generate_expression(&defer_expr)?;
+        }
+        Ok(())
+    }
     
 }
