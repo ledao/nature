@@ -879,7 +879,7 @@ mod tests {
         parser.advance().unwrap();
         
         let decl = parse_import_declaration(&mut parser).unwrap();
-        assert_eq!(decl.path, "fmt");
+        assert_eq!(decl.path, "std.fmt");
         assert!(decl.items.is_none());
         assert_eq!(decl.alias, Some("io".to_string()));
     }
@@ -892,7 +892,7 @@ mod tests {
         parser.advance().unwrap();
         
         let decl = parse_import_declaration(&mut parser).unwrap();
-        assert_eq!(decl.path, "fmt");
+        assert_eq!(decl.path, "std.fmt");
         assert!(decl.items.is_none());
         assert!(decl.alias.is_none());
     }

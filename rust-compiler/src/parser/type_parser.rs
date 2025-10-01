@@ -263,35 +263,58 @@ fn parse_channel_type(parser: &mut Parser) -> Result<Option<Type>> {
     }
 }
 
-/// Parse pointer type (*T or mut *T)
+/// Parse pointer type (T* or mut T*)
 fn parse_pointer_type(parser: &mut Parser) -> Result<Option<Type>> {
-    let mutable = parser.consume(&Token::Mut)?;
+    // First try to parse the base type
+    let base_type = parse_tuple_type(parser)?;
     
-    if parser.consume(&Token::Star)? {
-        let pointee_type = parse_type(parser)?;
-        if pointee_type.is_none() {
-            return Err(CompilerError::syntax(
-                parser.current_location().line,
-                parser.current_location().column,
-                "Expected pointee type in pointer type",
-            ));
+    if let Some(base_type) = base_type {
+        // Check if there's a '*' after the base type
+        if parser.consume(&Token::Star)? {
+            // Check for 'mut' before the '*'
+            let mutable = parser.consume(&Token::Mut)?;
+            
+            Ok(Some(Type::Pointer(PointerType {
+                pointee_type: Box::new(base_type),
+                mutable,
+                location: parser.current_location(),
+            })))
+        } else {
+            // No '*', return the base type
+            Ok(Some(base_type))
         }
-        
-        Ok(Some(Type::Pointer(PointerType {
-            pointee_type: Box::new(pointee_type.unwrap()),
-            mutable,
-            location: parser.current_location(),
-        })))
-    } else if mutable {
-        // If we consumed 'mut' but didn't find '*', put it back
-        // This is a simplified approach - in a real parser you'd need proper lookahead
-        return Err(CompilerError::syntax(
-            parser.current_location().line,
-            parser.current_location().column,
-            "Expected '*' after 'mut'",
-        ));
     } else {
-        parse_tuple_type(parser)
+        // No base type found, check for 'mut' at the beginning
+        let mutable = parser.consume(&Token::Mut)?;
+        
+        if mutable {
+            // Parse the base type after 'mut'
+            let base_type = parse_tuple_type(parser)?;
+            if base_type.is_none() {
+                return Err(CompilerError::syntax(
+                    parser.current_location().line,
+                    parser.current_location().column,
+                    "Expected type after 'mut'",
+                ));
+            }
+            
+            // Expect '*' after the type
+            if !parser.consume(&Token::Star)? {
+                return Err(CompilerError::syntax(
+                    parser.current_location().line,
+                    parser.current_location().column,
+                    "Expected '*' after type in 'mut T*'",
+                ));
+            }
+            
+            Ok(Some(Type::Pointer(PointerType {
+                pointee_type: Box::new(base_type.unwrap()),
+                mutable: true,
+                location: parser.current_location(),
+            })))
+        } else {
+            Ok(None)
+        }
     }
 }
 
@@ -481,7 +504,7 @@ mod tests {
 
     #[test]
     fn test_parse_pointer_type() {
-        let source = "*int".to_string();
+        let source = "int*".to_string();
         let mut parser = Parser::new(source, None);
         parser.advance().unwrap();
         

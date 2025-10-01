@@ -3,7 +3,7 @@ import fmt
 
 fn main() {
     var x: int = 42
-    var p: *int = &x  // address of operation
+    var p: int* = &x  // address of operation
     var y: int = *p   // dereference operation
     
     fmt.printf("x = %d\n", x)
