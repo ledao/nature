@@ -476,7 +476,23 @@ fn parse_primary(parser: &mut Parser) -> Result<Option<Expression>> {
             Token::Identifier(name) => {
                 let name = name.clone();
                 parser.advance()?;
-                Ok(Some(Expression::Variable(name)))
+                
+                // Check if this is a dotted identifier (e.g., io.println)
+                let mut full_name = name;
+                while parser.consume(&Token::Dot)? {
+                    if let Some(Token::Identifier(part)) = parser.peek().map(|t| &t.token) {
+                        full_name = format!("{}.{}", full_name, part);
+                        parser.advance()?;
+                    } else {
+                        return Err(CompilerError::syntax(
+                            parser.current_location().line,
+                            parser.current_location().column,
+                            "Expected identifier after '.'",
+                        ));
+                    }
+                }
+                
+                Ok(Some(Expression::Variable(full_name)))
             }
             
             // Parenthesized expressions

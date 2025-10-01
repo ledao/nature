@@ -91,7 +91,7 @@ impl Parser {
                 let interface = decl_parser::parse_interface_declaration(self)?;
                 Ok(Some(Declaration::Interface(interface)))
             }
-            Some(Token::Import) => {
+            Some(Token::Import) | Some(Token::From) => {
                 let import = decl_parser::parse_import_declaration(self)?;
                 Ok(Some(Declaration::Import(import)))
             }

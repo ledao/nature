@@ -1,0 +1,15 @@
+// module_test2.n - Test Python-style module system
+from std.io import printf, println
+import std.io
+import std.io as aio
+
+fn main() {
+    println("Hello from Python-style module system!")
+    printf("Number: %d\n", 42)
+
+    io.println("Hello from Python-style module system!")
+    io.printf("Number: %d\n", 42)
+
+    aio.println("Hello from Python-style module system!")
+    aio.printf("Number: %d\n", 42)
+}

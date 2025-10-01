@@ -77,20 +77,28 @@ impl ModuleResolver {
 
     /// Resolve module path from import path
     pub fn resolve_module_path(&self, import_path: &str) -> Result<String> {
-        // Remove quotes if present
+        // Python-style module path: std.io, xx.yy, etc.
         let path = import_path.trim_matches('"');
         
         // Handle relative paths
         if path.starts_with("./") || path.starts_with("../") {
             let full_path = self.base_dir.join(path);
             Ok(full_path.to_string_lossy().to_string())
-        } else if path.starts_with("std/") {
-            // Handle std modules
-            let std_path = self.base_dir.join(path);
+        } else if path.starts_with("std.") {
+            // Handle std modules: std.io -> std/io.n
+            let module_path = path.replace(".", "/") + ".n";
+            let std_path = self.base_dir.join(module_path);
             Ok(std_path.to_string_lossy().to_string())
+        } else if path.contains(".") {
+            // Handle dotted module paths: xx.yy -> xx/yy.n
+            let module_path = path.replace(".", "/") + ".n";
+            let full_path = self.base_dir.join(module_path);
+            Ok(full_path.to_string_lossy().to_string())
         } else {
-            // Absolute path or module name
-            Ok(path.to_string())
+            // Simple module name: xx -> xx.n
+            let module_path = path.to_string() + ".n";
+            let full_path = self.base_dir.join(module_path);
+            Ok(full_path.to_string_lossy().to_string())
         }
     }
 

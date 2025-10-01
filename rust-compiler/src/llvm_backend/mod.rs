@@ -374,13 +374,27 @@ impl<'ctx> LLVMBackend<'ctx> {
             _ => return Err(CompilerError::internal("Invalid function call")),
         };
         
+        // 处理带前缀的函数调用 (如 io.println, aio.printf)
+        let actual_function_name = if callee_name.contains('.') {
+            // 提取点号后的实际函数名
+            callee_name.split('.').last().unwrap_or(callee_name)
+        } else {
+            callee_name
+        };
+        
         // 特殊处理 println 和 print 函数
-        if callee_name == "println" || callee_name == "print" {
-            return self.generate_print_call(callee_name, &call.arguments);
+        if actual_function_name == "println" || actual_function_name == "print" {
+            return self.generate_print_call(actual_function_name, &call.arguments);
         }
         
-        let function = *self.function_map.get(callee_name)
-            .ok_or_else(|| CompilerError::internal(&format!("Undefined function: {}", callee_name)))?;
+        // 首先尝试使用完整名称查找函数
+        let function = if let Some(func) = self.function_map.get(callee_name) {
+            *func
+        } else if let Some(func) = self.function_map.get(actual_function_name) {
+            *func
+        } else {
+            return Err(CompilerError::internal(&format!("Undefined function: {}", callee_name)));
+        };
         
         // Generate arguments
         let args: Vec<BasicMetadataValueEnum> = call.arguments
@@ -655,6 +669,12 @@ impl<'ctx> LLVMBackend<'ctx> {
             
         if link_result.is_err() {
             return Err(CompilerError::internal("linker not found or failed"));
+        }
+        
+        let link_output = link_result.unwrap();
+        if !link_output.status.success() {
+            let error_msg = String::from_utf8_lossy(&link_output.stderr);
+            return Err(CompilerError::internal(&format!("Linker failed: {}", error_msg)));
         }
         
         println!("可执行文件已生成: {}", output_path);

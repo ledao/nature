@@ -85,7 +85,10 @@ impl Lexer {
     /// Skip whitespace characters and update position
     fn skip_whitespace(&mut self) {
         while self.position < self.source.len() {
-            let ch = self.source.chars().nth(self.position).unwrap();
+            let ch = match self.source.chars().nth(self.position) {
+                Some(c) => c,
+                None => break,
+            };
             if ch.is_whitespace() {
                 if ch == '\n' {
                     self.line += 1;

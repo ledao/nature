@@ -158,7 +158,7 @@ impl SemanticAnalyzer {
         
         if let Some(module) = self.module_resolver.get_module(&module_path) {
             if let Some(items) = &import.items {
-                // Named imports: { printf, println }
+                // from xx.yy import zz - named imports
                 for item_name in items {
                     if let Some(export_info) = module.exports.get(item_name) {
                         declarations_to_add.push(export_info.declaration.clone());
@@ -170,11 +170,29 @@ impl SemanticAnalyzer {
                         ));
                     }
                 }
+            } else if let Some(alias) = &import.alias {
+                // import xx.yy as zz - namespace import with alias
+                // Add all exported symbols with alias prefix
+                for (name, export_info) in &module.exports {
+                    let mut decl = export_info.declaration.clone();
+                    // Create a new function declaration with alias prefix
+                    if let Declaration::Function(func_decl) = &mut decl {
+                        func_decl.name = format!("{}.{}", alias, name);
+                    }
+                    declarations_to_add.push(decl);
+                }
             } else {
-                // Namespace import: * as namespace
-                // Add all exported symbols with namespace prefix
-                for (_name, export_info) in &module.exports {
-                    declarations_to_add.push(export_info.declaration.clone());
+                // import xx.yy - whole module import
+                // Extract module name from path (e.g., "std.io" -> "io")
+                let module_name = import.path.split('.').last().unwrap_or("module");
+                // Add all exported symbols with module name prefix
+                for (name, export_info) in &module.exports {
+                    let mut decl = export_info.declaration.clone();
+                    // Create a new function declaration with module prefix
+                    if let Declaration::Function(func_decl) = &mut decl {
+                        func_decl.name = format!("{}.{}", module_name, name);
+                    }
+                    declarations_to_add.push(decl);
                 }
             }
         } else {

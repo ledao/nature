@@ -512,18 +512,21 @@ pub fn parse_interface_declaration(parser: &mut Parser) -> Result<InterfaceDecl>
 
 /// Parse import declaration
 pub fn parse_import_declaration(parser: &mut Parser) -> Result<ImportDecl> {
-    parser.expect(&Token::Import)?;
+    // Python-style import: import xx.yy
+    // or: import xx.yy as zz
+    // or: from xx.yy import zz
     
-    // JavaScript-style import: import { name1, name2 } from "./path"
-    // or: import * as namespace from "./path"
-    let items = if parser.consume(&Token::LeftBrace)? {
-        // Named imports: { add, PI }
-        let mut imported_items = Vec::new();
+    if parser.consume(&Token::From)? {
+        // from xx.yy import zz
+        let module_path = parse_module_path(parser)?;
+        parser.expect(&Token::Import)?;
+        
+        let mut items = Vec::new();
         loop {
             if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
                 let name = name.clone();
                 parser.advance()?;
-                imported_items.push(name);
+                items.push(name);
                 
                 if parser.consume(&Token::Comma)? {
                     continue;
@@ -534,53 +537,90 @@ pub fn parse_import_declaration(parser: &mut Parser) -> Result<ImportDecl> {
                 break;
             }
         }
-        parser.expect(&Token::RightBrace)?;
-        Some(imported_items)
-    } else if parser.consume(&Token::Asterisk)? {
-        // Namespace import: * as utils
-        parser.expect(&Token::As)?;
-        if let Some(Token::Identifier(_name)) = parser.peek().map(|t| &t.token) {
-            parser.advance()?;
-        } else {
-            return Err(CompilerError::syntax(
-                parser.current_location().line,
-                parser.current_location().column,
-                "Expected identifier after 'as'",
-            ));
-        }
-        None  // * as imports all
-    } else {
-        return Err(CompilerError::syntax(
-            parser.current_location().line,
-            parser.current_location().column,
-            "Expected import items: { name1, name2 } or * as namespace",
-        ));
-    };
-    
-    // Parse 'from' keyword
-    parser.expect(&Token::From)?;
-    
-    // Parse module path
-    if let Some(Token::String(path)) = parser.peek().map(|t| &t.token) {
-        let import_path = path.clone();
-        parser.advance()?;
         
         // Optional semicolon
         parser.consume(&Token::Semicolon)?;
         
         Ok(ImportDecl {
-            path: import_path,
-            items,
+            path: module_path,
+            items: Some(items),
             alias: None,
             location: parser.current_location(),
         })
     } else {
-        Err(CompilerError::syntax(
+        // import xx.yy or import xx.yy as zz
+        parser.expect(&Token::Import)?;
+        let module_path = parse_module_path(parser)?;
+        
+        let alias = if parser.consume(&Token::As)? {
+            if let Some(Token::Identifier(alias_name)) = parser.peek().map(|t| &t.token) {
+                let alias = alias_name.clone();
+                parser.advance()?;
+                Some(alias)
+            } else {
+                return Err(CompilerError::syntax(
+                    parser.current_location().line,
+                    parser.current_location().column,
+                    "Expected alias name after 'as'",
+                ));
+            }
+        } else {
+            None
+        };
+        
+        // Optional semicolon
+        parser.consume(&Token::Semicolon)?;
+        
+        Ok(ImportDecl {
+            path: module_path,
+            items: None, // import xx.yy imports the whole module
+            alias,
+            location: parser.current_location(),
+        })
+    }
+}
+
+/// Parse module path (e.g., "std.io", "xx.yy", "./path")
+fn parse_module_path(parser: &mut Parser) -> Result<String> {
+    let mut path_parts = Vec::new();
+    
+    // Parse first identifier
+    if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+        let name = name.clone();
+        parser.advance()?;
+        path_parts.push(name);
+    } else {
+        return Err(CompilerError::syntax(
             parser.current_location().line,
             parser.current_location().column,
-            "Expected import path after 'from'",
-        ))
+            "Expected module name",
+        ));
     }
+    
+    // Parse additional parts separated by dots
+    // Stop if we encounter 'import' keyword
+    while parser.consume(&Token::Dot)? {
+        // Check if next token is 'import' - if so, we've reached the end of module path
+        if parser.check(&Token::Import) {
+            // Don't consume the dot, we need to stop here
+            return Ok(path_parts.join("."));
+        }
+        
+        if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+            let name = name.clone();
+            parser.advance()?;
+            path_parts.push(name);
+        } else {
+            return Err(CompilerError::syntax(
+                parser.current_location().line,
+                parser.current_location().column,
+                "Expected module name after '.'",
+            ));
+        }
+    }
+    
+    // Join parts with dots
+    Ok(path_parts.join("."))
 }
 
 /// Parse method declaration
@@ -817,17 +857,44 @@ mod tests {
 
     #[test]
     fn test_parse_import_declaration() {
-        let source = r#"import { printf, println } from "./std/io.n""#.to_string();
+        // Test: from std.io import printf, println
+        let source = "from std.io import printf, println".to_string();
         let mut parser = Parser::new(source, None);
         parser.advance().unwrap();
         
         let decl = parse_import_declaration(&mut parser).unwrap();
-        assert_eq!(decl.path, "./std/io.n");
+        assert_eq!(decl.path, "std.io");
         assert!(decl.items.is_some());
         let items = decl.items.unwrap();
         assert_eq!(items.len(), 2);
         assert!(items.contains(&"printf".to_string()));
         assert!(items.contains(&"println".to_string()));
+    }
+    
+    #[test]
+    fn test_parse_import_with_alias() {
+        // Test: import std.io as io
+        let source = "import std.io as io".to_string();
+        let mut parser = Parser::new(source, None);
+        parser.advance().unwrap();
+        
+        let decl = parse_import_declaration(&mut parser).unwrap();
+        assert_eq!(decl.path, "std.io");
+        assert!(decl.items.is_none());
+        assert_eq!(decl.alias, Some("io".to_string()));
+    }
+    
+    #[test]
+    fn test_parse_simple_import() {
+        // Test: import std.io
+        let source = "import std.io".to_string();
+        let mut parser = Parser::new(source, None);
+        parser.advance().unwrap();
+        
+        let decl = parse_import_declaration(&mut parser).unwrap();
+        assert_eq!(decl.path, "std.io");
+        assert!(decl.items.is_none());
+        assert!(decl.alias.is_none());
     }
 }
 
