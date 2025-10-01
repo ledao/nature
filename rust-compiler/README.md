@@ -1,185 +1,154 @@
-# Nature Compiler - Rust Implementation
+# Nature Rust编译器
 
-这是Nature编程语言编译器的Rust实现，使用LLVM进行代码生成。
-
-## 🎯 项目目标
-
-- ✅ **100%兼容Nature语法**：完全支持现有Nature语言的所有语法特性
-- ✅ **使用LLVM代码生成**：利用LLVM的强大优化和跨平台支持
-- ✅ **在现有项目中追加**：不破坏原有C实现，并行开发
-- ✅ **完善的单元测试**：确保代码质量和兼容性
-
-## 🏗️ 项目结构
-
-```
-rust-compiler/
-├── Cargo.toml              # Rust项目配置
-├── src/
-│   ├── main.rs             # CLI入口
-│   ├── lib.rs              # 库入口
-│   ├── error.rs            # 错误处理
-│   ├── lexer/              # 词法分析
-│   │   ├── mod.rs
-│   │   └── token.rs
-│   ├── parser/             # 语法分析
-│   │   ├── mod.rs
-│   │   ├── expr_parser.rs
-│   │   ├── stmt_parser.rs
-│   │   ├── decl_parser.rs
-│   │   └── type_parser.rs
-│   ├── ast/                # AST定义
-│   │   ├── mod.rs
-│   │   ├── expr.rs
-│   │   ├── stmt.rs
-│   │   ├── decl.rs
-│   │   └── types.rs
-│   ├── semantic/           # 语义分析
-│   │   ├── mod.rs
-│   │   └── symbol_table.rs
-│   ├── type_check/         # 类型检查
-│   ├── llvm_backend/       # LLVM代码生成
-│   └── utils/              # 工具函数
-├── tests/                  # 测试
-└── examples/               # 示例
-```
-
-## 📊 开发进度
-
-### ✅ 已完成 (4周)
-
-#### 阶段1: 项目初始化 (1周)
-- [x] 创建Rust项目结构
-- [x] 配置Cargo.toml和依赖管理
-- [x] 建立错误处理系统
-- [x] 创建CLI接口
-
-#### 阶段2: 词法分析器 (2周)
-- [x] 实现完整的Token定义
-- [x] 支持所有Nature语言关键字和操作符
-- [x] 创建带位置信息的词法分析器
-- [x] 支持字符串、数字、标识符等字面量
-
-#### 阶段3: AST定义 (1周)
-- [x] 定义了完整的AST节点结构
-- [x] 支持表达式、语句、声明、类型系统
-- [x] 实现了序列化支持
-- [x] 建立了类型上下文系统
-
-#### 阶段4: 语法分析器 (3周)
-- [x] 创建基础解析器框架
-- [x] 实现递归下降解析
-- [x] 支持错误恢复和同步
-- [x] 实现表达式解析器
-- [x] 实现类型解析器
-- [x] 实现语句解析器
-- [x] 实现声明解析器
-
-#### 阶段5: 语义分析 (2周) - 进行中
-- [x] 创建语义分析器框架
-- [x] 实现符号表管理
-- [ ] 实现作用域分析
-- [ ] 实现名称解析
-- [ ] 实现语义检查
-
-### 🔄 进行中
-
-#### 阶段5: 语义分析 (2周)
-- [x] 创建语义分析器框架
-- [x] 实现符号表管理
-- [ ] 实现作用域分析
-- [ ] 实现名称解析
-- [ ] 实现语义检查
-
-### 📅 待完成
-
-#### 阶段6: 类型检查系统 (3周)
-- [ ] 类型推断算法
-- [ ] 泛型类型检查
-- [ ] 类型兼容性检查
-- [ ] 错误类型处理
-
-#### 阶段7: LLVM代码生成 (4周)
-- [ ] LLVM IR生成
-- [ ] 函数代码生成
-- [ ] 控制流处理
-- [ ] 内存管理
-
-#### 阶段8: 测试框架 (2周)
-- [ ] 单元测试覆盖
-- [ ] 集成测试
-- [ ] 性能测试
-- [ ] 兼容性测试
-
-#### 阶段9: 集成测试 (2周)
-- [ ] 与C编译器对比测试
-- [ ] 标准库测试
-- [ ] 复杂程序测试
-- [ ] 性能基准测试
-
-## 🛠️ 技术栈
-
-- **语言**: Rust (内存安全、高性能)
-- **解析**: Logos (高性能词法分析) + 手写递归下降解析器
-- **代码生成**: LLVM (强大的优化和跨平台支持)
-- **测试**: Criterion (性能测试) + 自定义测试框架
-- **构建**: Cargo (Rust标准构建工具)
+一个用Rust实现的Nature编程语言编译器，使用LLVM作为后端。
 
 ## 🚀 快速开始
 
-### 构建项目
-
+### 1. 环境初始化（首次使用）
 ```bash
-cd rust-compiler
-cargo build
+./init.sh
+```
+这个脚本会：
+- ✅ 检查Rust环境
+- ✅ 检查LLVM 15工具链
+- ✅ 检查链接器（GCC）
+- ✅ 自动安装缺失的依赖
+- ✅ 测试编译环境
+
+### 2. 构建项目
+```bash
+cargo build --release
 ```
 
-### 运行测试
+### 3. 运行示例
+```bash
+# 编译Nature源代码
+./target/release/nrc build --input examples/basic.n
 
+# 运行生成的可执行文件
+./main
+```
+
+## 📁 项目结构
+
+```
+rust-compiler/
+├── src/                    # 源代码
+│   ├── lexer/             # 词法分析器
+│   ├── parser/            # 语法分析器
+│   ├── semantic/          # 语义分析器
+│   ├── llvm_backend/      # LLVM后端
+│   └── lib.rs             # 主库文件
+├── examples/              # 示例文件
+│   ├── basic.n           # 基础示例
+│   └── test_builtins.n   # 内置函数测试
+└── Cargo.toml            # 项目配置
+```
+
+## 🛠️ 系统要求
+
+- **操作系统**: Linux (Ubuntu/Debian推荐)
+- **Rust**: 1.70+
+- **LLVM**: 15.x (自动检测)
+- **GCC**: 9.0+ (作为链接器)
+
+## 📋 支持的功能
+
+### 语言特性
+- ✅ 函数定义和调用
+- ✅ 变量声明 (`var`, `let`)
+- ✅ 基本数据类型 (`int`, `float`, `string`)
+- ✅ 算术运算 (`+`, `-`, `*`, `/`)
+- ✅ 控制流 (`if`, `while`, `for`)
+- ✅ 返回语句 (`return`)
+
+### 内置函数
+- ✅ `println()` - 打印并换行
+- ✅ `print()` - 打印不换行
+- ✅ `len()` - 获取字符串长度
+
+### 编译器特性
+- ✅ LLVM IR生成
+- ✅ 机器码生成
+- ✅ 可执行文件生成
+- ✅ 错误报告
+- ✅ 类型检查
+
+## 🧪 示例
+
+### basic.n
+```nature
+fn add(int a, int b): int {
+    return a + b;
+}
+
+fn main() {   
+    println("hello nature\n");
+    println("3 + 2 = ", add(3, 2));
+}
+```
+
+### test_builtins.n
+```nature
+fn test_print() {
+    print("Hello ");
+    println("World!");
+    println("Numbers: ", 42, " and ", 3.14);
+}
+
+fn test_len() {
+    var text = "Hello Nature";
+    var length = len(text);
+    println("Length of '", text, "' is ", length);
+}
+
+fn main() {
+    test_print();
+    test_len();
+}
+```
+
+## 🔧 开发
+
+### 运行测试
 ```bash
 cargo test
 ```
 
-### 运行示例
-
+### 查看文档
 ```bash
-cargo run -- build examples/hello.n
+cargo doc --open
 ```
 
-## 📈 项目规模对比
+### 调试构建
+```bash
+cargo build
+```
 
-| 指标 | C实现 | Rust实现(预估) |
-|------|-------|----------------|
-| 代码行数 | 64,338行 | ~25,000行 |
-| 开发时间 | 6-8个月 | 4-5个月 |
-| 维护成本 | 高 | 低 |
-| 性能 | 好 | 更好(LLVM优化) |
-| 跨平台支持 | 3个架构 | 20+个架构 |
+## 🐛 故障排除
 
-## 🎯 关键优势
+### 常见问题
 
-1. **开发效率**: 使用LLVM可节省2-3个月的手写代码生成时间
-2. **代码质量**: Rust的内存安全特性减少运行时错误
-3. **性能优化**: LLVM提供业界领先的优化
-4. **跨平台**: LLVM支持更多目标平台
-5. **维护性**: 现代Rust代码更易维护和扩展
+1. **LLVM未找到**
+   ```bash
+   sudo apt install -y llvm-15-dev llvm-15-tools
+   ```
 
-## 📝 开发计划
+2. **链接器错误**
+   ```bash
+   sudo apt install -y gcc
+   ```
 
-**总预估时间：4-5个月（全职开发）**
-
-- 已完成：4周
-- 剩余：16周
-- 当前进度：25%
-
-## 🤝 贡献
-
-欢迎贡献代码！请确保：
-
-1. 代码符合Rust标准
-2. 添加适当的测试
-3. 更新文档
-4. 通过所有测试
+3. **编译错误**
+   ```bash
+   cargo clean
+   cargo build --release
+   ```
 
 ## 📄 许可证
 
-本项目采用Apache-2.0许可证。
+本项目采用MIT许可证。
+
+## 🤝 贡献
+
+欢迎提交Issue和Pull Request！
