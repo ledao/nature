@@ -388,6 +388,9 @@ impl<'ctx> LLVMBackend<'ctx> {
             Expression::Binary(binary) => {
                 self.generate_binary_expression(binary)
             }
+            Expression::Unary(unary) => {
+                self.generate_unary_expression(unary)
+            }
             Expression::Match(match_expr) => {
                 self.generate_match_expression(match_expr)
             }
@@ -494,8 +497,10 @@ impl<'ctx> LLVMBackend<'ctx> {
             let value = self.generate_expression(arg)?;
             match value {
                 BasicValueEnum::PointerValue(ptr) => {
-                    // 字符串参数，直接打印
-                    let _ = self.builder.build_call(printf_func, &[ptr.into()], "printf_call");
+                    // 指针参数，需要转换为整数打印
+                    let ptr_as_int = self.builder.build_ptr_to_int(ptr, self.context.i64_type(), "ptr_as_int")?;
+                    let format_str = self.builder.build_global_string_ptr("%p", "format_str")?;
+                    let _ = self.builder.build_call(printf_func, &[format_str.as_pointer_value().into(), ptr_as_int.into()], "printf_ptr_call");
                 }
                 BasicValueEnum::IntValue(int_val) => {
                     // 整数参数，需要格式化字符串
@@ -520,6 +525,85 @@ impl<'ctx> LLVMBackend<'ctx> {
         }
         
         Ok(self.context.i32_type().const_int(0, false).into())
+    }
+
+    /// Generate unary expression
+    fn generate_unary_expression(&mut self, unary: &UnaryExpr) -> Result<BasicValueEnum<'ctx>> {
+        let operand = self.generate_expression(&unary.operand)?;
+        
+        match unary.operator {
+            UnaryOp::Deref => {
+                // Dereference: *ptr -> load ptr
+                match operand {
+                    BasicValueEnum::PointerValue(ptr) => {
+                        // For LLVM 15.0, we need to use a different approach
+                        // Since get_element_type is not available, we'll use a generic load
+                        // This is a simplified implementation that assumes i32 for now
+                        let i32_type = self.context.i32_type();
+                        Ok(self.builder.build_load(i32_type, ptr, "deref")?.into())
+                    }
+                    _ => Err(CompilerError::internal("Cannot dereference non-pointer value")),
+                }
+            }
+            UnaryOp::AddrOf => {
+                // Address of: &var -> alloca and store
+                match &*unary.operand {
+                    Expression::Variable(name) => {
+                        // For now, we'll create an alloca for the variable and return its address
+                        // This is a simplified implementation
+                        if let Some(value) = self.variable_map.get(name) {
+                            // Create an alloca for the variable
+                            let alloca = self.builder.build_alloca(value.get_type(), name)?;
+                            // Store the current value
+                            let _ = self.builder.build_store(alloca, *value);
+                            Ok(alloca.into())
+                        } else {
+                            Err(CompilerError::internal(&format!("Undefined variable: {}", name)))
+                        }
+                    }
+                    _ => Err(CompilerError::internal("Address of operator only supported for variables")),
+                }
+            }
+            UnaryOp::Neg => {
+                // Unary minus: -x
+                match operand {
+                    BasicValueEnum::IntValue(int_val) => {
+                        let zero = self.context.i32_type().const_int(0, false);
+                        Ok(self.builder.build_int_sub(zero, int_val, "neg")?.into())
+                    }
+                    BasicValueEnum::FloatValue(float_val) => {
+                        let zero = self.context.f64_type().const_float(0.0);
+                        Ok(self.builder.build_float_sub(zero, float_val, "fneg")?.into())
+                    }
+                    _ => Err(CompilerError::internal("Cannot negate non-numeric value")),
+                }
+            }
+            UnaryOp::Pos => {
+                // Unary plus: +x (no-op)
+                Ok(operand)
+            }
+            UnaryOp::Not => {
+                // Logical not: !x
+                match operand {
+                    BasicValueEnum::IntValue(int_val) => {
+                        let zero = self.context.i32_type().const_int(0, false);
+                        let is_zero = self.builder.build_int_compare(inkwell::IntPredicate::EQ, int_val, zero, "is_zero")?;
+                        Ok(self.builder.build_int_z_extend(is_zero, self.context.i32_type(), "not")?.into())
+                    }
+                    _ => Err(CompilerError::internal("Cannot apply logical not to non-integer value")),
+                }
+            }
+            UnaryOp::BitNot => {
+                // Bitwise not: ~x
+                match operand {
+                    BasicValueEnum::IntValue(int_val) => {
+                        let all_ones = self.context.i32_type().const_int(u32::MAX as u64, false);
+                        Ok(self.builder.build_xor(int_val, all_ones, "bitnot")?.into())
+                    }
+                    _ => Err(CompilerError::internal("Cannot apply bitwise not to non-integer value")),
+                }
+            }
+        }
     }
 
     /// Generate binary expression
@@ -683,6 +767,11 @@ impl<'ctx> LLVMBackend<'ctx> {
                     types::BasicType::Bool => Ok(self.context.bool_type().into()),
                     _ => Err(CompilerError::internal("Unsupported basic type")),
                 }
+            }
+            Some(Type::Pointer(pointer_type)) => {
+                // Convert pointer type: *T -> T*
+                let pointee_type = self.nature_type_to_llvm_type(&Some(*pointer_type.pointee_type.clone()))?;
+                Ok(pointee_type.ptr_type(AddressSpace::default()).into())
             }
             None => Ok(self.context.i32_type().into()), // Default to int for void
             _ => Err(CompilerError::internal("Unsupported type")),
