@@ -13,3 +13,10 @@ libruntime.a
 .zig-cache/*
 rust-compiler/target/*
 rust-compiler/main
+rust-compiler/basic_linux
+rust-compiler/main_debug
+rust-compiler/fibonacci_dynamic
+rust-compiler/fibonacci
+rust-compiler/myapp
+rust-compiler/portability_test/fibonacci
+rust-compiler/portability_test/simulate_different_systems.sh

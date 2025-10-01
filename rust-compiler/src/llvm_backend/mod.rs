@@ -628,13 +628,22 @@ impl<'ctx> LLVMBackend<'ctx> {
     pub fn generate_executable(&self, output_path: &str) -> Result<()> {
         
         // 使用 llc 和 gcc 生成可执行文件
-        self.try_generate_native_executable(output_path)?;
+        self.try_generate_native_executable(output_path, None)?;
+        
+        Ok(())
+    }
+    
+    /// Generate executable file with target configuration
+    pub fn generate_executable_with_target(&self, output_path: &str, target_config: &crate::TargetConfig) -> Result<()> {
+        
+        // 使用 llc 和 gcc 生成可执行文件
+        self.try_generate_native_executable(output_path, Some(target_config))?;
         
         Ok(())
     }
     
     /// Try to generate native executable using llc and gcc
-    fn try_generate_native_executable(&self, output_path: &str) -> Result<()> {
+    fn try_generate_native_executable(&self, output_path: &str, target_config: Option<&crate::TargetConfig>) -> Result<()> {
         use std::process::Command;
         use std::fs;
         
@@ -648,20 +657,89 @@ impl<'ctx> LLVMBackend<'ctx> {
         
         // Use llc to compile LLVM IR to object file
         let obj_file = temp_dir.join("output.o");
-        let llc_result = Command::new("llc-15")
+        
+        // Get llc command based on target
+        let llc_cmd = if let Some(target) = target_config {
+            target.get_llc_command()
+        } else {
+            "llc-15"
+        };
+        
+        let mut llc_cmd_builder = Command::new(llc_cmd);
+        llc_cmd_builder
             .arg("-filetype=obj")
             .arg(&ir_file)
             .arg("-o")
-            .arg(&obj_file)
-            .output();
+            .arg(&obj_file);
+            
+        // Add target triple if specified
+        if let Some(target) = target_config {
+            llc_cmd_builder.arg("-mtriple").arg(&target.to_llvm_triple());
+        }
+        
+        let llc_result = llc_cmd_builder.output();
             
         if llc_result.is_err() {
             return Err(CompilerError::internal("llc not found"));
         }
         
-        // 使用gcc链接（最稳定，自动处理库依赖）
-        let link_result = Command::new("gcc")
-            .arg("-no-pie")
+        // Go风格的静态链接 - 生成完全自包含的可执行文件
+        let linker_cmd = if let Some(target) = target_config {
+            target.get_linker_command()
+        } else {
+            "gcc"
+        };
+        
+        let mut link_cmd_builder = Command::new(linker_cmd);
+        
+        // Platform-specific linking flags
+        if let Some(target) = target_config {
+            match target.os.as_str() {
+                "linux" => {
+                    // GCC-style flags
+                    link_cmd_builder
+                        .arg("-static")
+                        .arg("-no-pie")
+                        .arg("-Wl,--gc-sections")
+                        .arg("-Wl,--strip-all")
+                        .arg("-Wl,--build-id=none")
+                        .arg("-lc")
+                        .arg("-lm");
+                }
+                "windows" => {
+                    // Windows-specific linking flags
+                    link_cmd_builder
+                        .arg("/SUBSYSTEM:CONSOLE")
+                        .arg("/ENTRY:mainCRTStartup");
+                }
+                "darwin" => {
+                    // macOS-specific linking flags
+                    link_cmd_builder
+                        .arg("-static")
+                        .arg("-lc");
+                }
+                _ => {
+                    // Default to gcc-style linking
+                    link_cmd_builder
+                        .arg("-static")
+                        .arg("-no-pie")
+                        .arg("-lc")
+                        .arg("-lm");
+                }
+            }
+        } else {
+            // Default linking for current platform
+            link_cmd_builder
+                .arg("-static")
+                .arg("-no-pie")
+                .arg("-Wl,--gc-sections")
+                .arg("-Wl,--strip-all")
+                .arg("-Wl,--build-id=none")
+                .arg("-lc")
+                .arg("-lm");
+        }
+        
+        let link_result = link_cmd_builder
             .arg(&obj_file)
             .arg("-o")
             .arg(output_path)
