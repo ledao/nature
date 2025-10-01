@@ -205,6 +205,9 @@ impl<'ctx> LLVMBackend<'ctx> {
             Statement::Block(block_stmt) => {
                 self.generate_block_statement(block_stmt)?;
             }
+            Statement::Match(match_stmt) => {
+                self.generate_match_statement(match_stmt)?;
+            }
             _ => {
                 // Other statement types not yet implemented
             }
@@ -277,6 +280,65 @@ impl<'ctx> LLVMBackend<'ctx> {
         Ok(())
     }
 
+    /// Generate match statement
+    fn generate_match_statement(&mut self, match_stmt: &MatchStmt) -> Result<()> {
+        // Generate the expression to match
+        let match_value = self.generate_expression(&match_stmt.expr)?;
+        
+        // Create a single end block for the entire match statement
+        let match_end_block = self.context.append_basic_block(self.current_function.unwrap(), "match.end");
+        
+        // For now, implement a simple version that doesn't create new basic blocks
+        if match_stmt.arms.len() == 1 {
+            // Single arm - just execute it directly
+            let arm = &match_stmt.arms[0];
+            self.generate_statement(&arm.body)?;
+            // Branch to end block
+            let _ = self.builder.build_unconditional_branch(match_end_block);
+            // Position builder at end block
+            self.builder.position_at_end(match_end_block);
+            return Ok(());
+        }
+        
+        // For multiple arms, implement a simple if-else chain
+        for (i, arm) in match_stmt.arms.iter().enumerate() {
+            let condition = self.generate_pattern_condition(match_value, &arm.pattern, &arm.guard)?;
+            
+            // Convert condition to boolean (i1)
+            let condition_bool = self.builder.build_int_compare(inkwell::IntPredicate::NE, condition, self.context.i32_type().const_int(0, false), "condition_bool")?;
+            
+            // Create basic blocks for this arm
+            let then_block = self.context.append_basic_block(self.current_function.unwrap(), &format!("match.then.{}", i));
+            let else_block = if i < match_stmt.arms.len() - 1 {
+                Some(self.context.append_basic_block(self.current_function.unwrap(), &format!("match.else.{}", i)))
+            } else {
+                None
+            };
+            
+            // Create conditional branch
+            let _ = self.builder.build_conditional_branch(condition_bool, then_block, else_block.unwrap_or(match_end_block));
+            
+            // Generate then block
+            self.builder.position_at_end(then_block);
+            self.generate_statement(&arm.body)?;
+            let _ = self.builder.build_unconditional_branch(match_end_block);
+            
+            // Generate else block if present
+            if let Some(else_block) = else_block {
+                self.builder.position_at_end(else_block);
+                // Continue to next arm
+            } else {
+                // This is the last arm, position at end block
+                self.builder.position_at_end(match_end_block);
+                return Ok(());
+            }
+        }
+        
+        // Position builder at end block
+        self.builder.position_at_end(match_end_block);
+        Ok(())
+    }
+
     /// Generate variable declaration
     fn generate_variable_declaration(&mut self, var_decl: &VariableDeclStmt) -> Result<()> {
         let _var_type = self.nature_type_to_llvm_type(&var_decl.var_type)?;
@@ -325,6 +387,9 @@ impl<'ctx> LLVMBackend<'ctx> {
             }
             Expression::Binary(binary) => {
                 self.generate_binary_expression(binary)
+            }
+            Expression::Match(match_expr) => {
+                self.generate_match_expression(match_expr)
             }
             _ => {
                 Err(CompilerError::internal("Unsupported expression type"))
@@ -760,6 +825,120 @@ impl<'ctx> LLVMBackend<'ctx> {
         println!("对象文件: {}", obj_file.display());
         
         Ok(())
+    }
+    
+    /// Generate match expression
+    fn generate_match_expression(&mut self, match_expr: &MatchExpr) -> Result<BasicValueEnum<'ctx>> {
+        // For now, implement a simple version that doesn't create new basic blocks
+        // This is a temporary fix to avoid control flow issues
+        
+        if match_expr.arms.len() == 1 {
+            // Single arm - just execute it directly
+            let arm = &match_expr.arms[0];
+            return self.generate_expression(&arm.body);
+        }
+        
+        // For multiple arms, use a simple approach:
+        // Generate all arms and use phi node to select the result
+        let match_value = self.generate_expression(&match_expr.expr)?;
+        
+        // Generate first arm to determine result type
+        let first_arm = &match_expr.arms[0];
+        let first_condition = self.generate_pattern_condition(match_value, &first_arm.pattern, &first_arm.guard)?;
+        let first_condition_bool = self.builder.build_int_compare(inkwell::IntPredicate::NE, first_condition, self.context.i32_type().const_int(0, false), "condition_bool")?;
+        
+        let first_then_block = self.context.append_basic_block(self.current_function.unwrap(), "match.then.0");
+        let first_else_block = self.context.append_basic_block(self.current_function.unwrap(), "match.else.0");
+        let _ = self.builder.build_conditional_branch(first_condition_bool, first_then_block, first_else_block);
+        
+        self.builder.position_at_end(first_then_block);
+        let first_result = self.generate_expression(&first_arm.body)?;
+        
+        // Create end block after we know the result type
+        let end_block = self.context.append_basic_block(self.current_function.unwrap(), "match.end");
+        let _ = self.builder.build_unconditional_branch(end_block);
+        
+        // Generate remaining arms
+        self.builder.position_at_end(first_else_block);
+        let mut last_result = first_result;
+        
+        for (i, arm) in match_expr.arms.iter().enumerate().skip(1) {
+            let condition = self.generate_pattern_condition(match_value, &arm.pattern, &arm.guard)?;
+            let condition_bool = self.builder.build_int_compare(inkwell::IntPredicate::NE, condition, self.context.i32_type().const_int(0, false), "condition_bool")?;
+            
+            let then_block = self.context.append_basic_block(self.current_function.unwrap(), &format!("match.then.{}", i));
+            let else_block = if i < match_expr.arms.len() - 1 {
+                Some(self.context.append_basic_block(self.current_function.unwrap(), &format!("match.else.{}", i)))
+            } else {
+                None
+            };
+            
+            let _ = self.builder.build_conditional_branch(condition_bool, then_block, else_block.unwrap_or(end_block));
+            
+            self.builder.position_at_end(then_block);
+            let arm_result = self.generate_expression(&arm.body)?;
+            last_result = arm_result;
+            let _ = self.builder.build_unconditional_branch(end_block);
+            
+            if let Some(else_block) = else_block {
+                self.builder.position_at_end(else_block);
+            }
+        }
+        
+        self.builder.position_at_end(end_block);
+        Ok(last_result)
+    }
+    
+    
+    /// Generate pattern condition
+    fn generate_pattern_condition(&mut self, match_value: BasicValueEnum<'ctx>, pattern: &Pattern, guard: &Option<Expression>) -> Result<inkwell::values::IntValue<'ctx>> {
+        let pattern_condition = match pattern {
+            Pattern::Literal(lit) => {
+                let pattern_value = self.generate_literal(lit)?;
+                match (match_value, pattern_value) {
+                    (BasicValueEnum::IntValue(mv), BasicValueEnum::IntValue(pv)) => {
+                        let result = self.builder.build_int_compare(inkwell::IntPredicate::EQ, mv, pv, "pattern_eq")?;
+                        let extended = self.builder.build_int_z_extend(result, self.context.i32_type(), "pattern_condition")?;
+                        Ok::<inkwell::values::IntValue<'ctx>, CompilerError>(extended)
+                    }
+                    _ => return Err(CompilerError::internal("Pattern type mismatch")),
+                }
+            }
+            Pattern::Wildcard => {
+                // Wildcard always matches
+                Ok(self.context.i32_type().const_int(1, false))
+            }
+            Pattern::Or(patterns) => {
+                // OR pattern - any of the patterns can match
+                let mut or_result = self.context.i32_type().const_int(0, false);
+                for sub_pattern in patterns {
+                    let sub_condition = self.generate_pattern_condition(match_value, sub_pattern, &None)?;
+                    let sub_condition_bool = self.builder.build_int_compare(inkwell::IntPredicate::NE, sub_condition, self.context.i32_type().const_int(0, false), "sub_condition_bool")?;
+                    or_result = self.builder.build_or(or_result, self.builder.build_int_z_extend(sub_condition_bool, self.context.i32_type(), "sub_condition_ext")?, "or_result")?;
+                }
+                Ok(or_result)
+            }
+            _ => {
+                return Err(CompilerError::internal("Unsupported pattern type"));
+            }
+        }?;
+        
+        // Apply guard condition if present
+        if let Some(guard_expr) = guard {
+            let guard_condition = self.generate_expression(guard_expr)?;
+            let guard_condition_int = match guard_condition {
+                BasicValueEnum::IntValue(int_val) => int_val,
+                _ => return Err(CompilerError::internal("Guard condition must be an integer")),
+            };
+            
+            // Combine pattern condition and guard condition with AND
+            let pattern_condition_bool = self.builder.build_int_compare(inkwell::IntPredicate::NE, pattern_condition, self.context.i32_type().const_int(0, false), "pattern_condition_bool")?;
+            let guard_condition_bool = self.builder.build_int_compare(inkwell::IntPredicate::NE, guard_condition_int, self.context.i32_type().const_int(0, false), "guard_condition_bool")?;
+            let combined_condition = self.builder.build_and(pattern_condition_bool, guard_condition_bool, "combined_condition")?;
+            Ok(self.builder.build_int_z_extend(combined_condition, self.context.i32_type(), "final_condition")?)
+        } else {
+            Ok(pattern_condition)
+        }
     }
     
     

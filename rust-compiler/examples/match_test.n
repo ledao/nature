@@ -1,9 +1,11 @@
+from std.io import println
+
 fn main() {
-    int n = 3
+    var n: int = 3
     match n {
-        1|2 -> println('one or two')
-        3 -> println('three') // here
-        _ -> println('something else')
+        1|2 -> println("one or two")
+        3 -> println("three") // here
+        _ -> println("something else")
     }
 
     var res = match {

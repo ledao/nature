@@ -387,6 +387,8 @@ pub enum Pattern {
     Array(Vec<Pattern>),
     /// Type pattern
     Type(Type),
+    /// Or pattern (alternative patterns)
+    Or(Vec<Pattern>),
 }
 
 /// Struct pattern

@@ -732,60 +732,149 @@ fn parse_lambda(parser: &mut Parser) -> Result<Option<Expression>> {
 fn parse_match_expression(parser: &mut Parser) -> Result<Option<Expression>> {
     parser.expect(&Token::Match)?;
     
-    let expr = parse_expression(parser)?;
-    if expr.is_none() {
-        return Err(CompilerError::syntax(
-            parser.current_location().line,
-            parser.current_location().column,
-            "Expected expression after 'match'",
-        ));
-    }
+    // Parse expression (optional for guard-only match)
+    let expr = if parser.check(&Token::LeftBrace) {
+        None
+    } else {
+        let expr = parse_expression(parser)?;
+        if expr.is_none() {
+            return Err(CompilerError::syntax(
+                parser.current_location().line,
+                parser.current_location().column,
+                "Expected expression after 'match'",
+            ));
+        }
+        expr
+    };
     
     parser.expect(&Token::LeftBrace)?;
     
     let mut arms = Vec::new();
     
     while !parser.check(&Token::RightBrace) {
-        let pattern = parse_pattern(parser)?;
-        if pattern.is_none() {
-            break;
-        }
-        
-        // Parse guard
-        let guard = if parser.consume(&Token::If)? {
-            parse_expression(parser)?
+        if expr.is_some() {
+            // Regular match with expression
+            let pattern = parse_pattern_or(parser)?;
+            if pattern.is_none() {
+                break;
+            }
+            
+            // Parse guard
+            let guard = if parser.consume(&Token::If)? {
+                parse_expression(parser)?
+            } else {
+                None
+            };
+            
+            parser.expect(&Token::Arrow)?;
+            
+            let body = parse_expression(parser)?;
+            if let (Some(pattern), Some(body)) = (pattern, body) {
+                arms.push(MatchArm {
+                    pattern,
+                    guard,
+                    body,
+                    location: parser.current_location(),
+                });
+            }
         } else {
-            None
-        };
-        
-        parser.expect(&Token::Arrow)?;
-        
-        let body = parse_expression(parser)?;
-        if let (Some(pattern), Some(body)) = (pattern, body) {
-            arms.push(MatchArm {
-                pattern,
-                guard,
-                body,
-                location: parser.current_location(),
-            });
+            // Guard-only match
+            let guard = if parser.check(&Token::LeftParen) {
+                parser.advance()?;
+                let guard_expr = parse_expression(parser)?;
+                parser.expect(&Token::RightParen)?;
+                guard_expr
+            } else if parser.check(&Token::Underscore) {
+                // Handle wildcard pattern in guard-only match
+                parser.advance()?;
+                None // No guard for wildcard
+            } else {
+                parse_expression(parser)?
+            };
+            
+            parser.expect(&Token::Arrow)?;
+            
+            let body = parse_expression(parser)?;
+            if let Some(body) = body {
+                arms.push(MatchArm {
+                    pattern: Pattern::Wildcard,
+                    guard,
+                    body,
+                    location: parser.current_location(),
+                });
+            }
         }
         
-        if !parser.consume(&Token::Comma)? {
+        // Check if we should continue parsing more arms
+        // Continue if we find a comma or if we're at the start of a new line
+        if parser.consume(&Token::Comma)? {
+            continue;
+        }
+        
+        // If we're at the end of the match block, break
+        if parser.check(&Token::RightBrace) {
             break;
         }
+        
+        // If we're at the start of a new line and there's a potential pattern/guard, continue
+        // This handles the case where arms are separated by newlines without commas
+        if matches!(parser.peek().map(|t| &t.token), Some(Token::Integer(_))) || 
+           matches!(parser.peek().map(|t| &t.token), Some(Token::Float(_))) || 
+           matches!(parser.peek().map(|t| &t.token), Some(Token::String(_))) || 
+           matches!(parser.peek().map(|t| &t.token), Some(Token::Identifier(_))) || 
+           parser.check(&Token::Underscore) ||
+           parser.check(&Token::LeftParen) {
+            continue;
+        }
+        
+        break;
     }
     
     parser.expect(&Token::RightBrace)?;
     
     Ok(Some(Expression::Match(MatchExpr {
-        expr: Box::new(expr.unwrap()),
+        expr: Box::new(expr.unwrap_or_else(|| {
+            // For guard-only match, create a dummy expression
+            Expression::Literal(Literal::Boolean(true))
+        })),
         arms,
         location: parser.current_location(),
     })))
 }
 
-/// Parse pattern
-fn parse_pattern(parser: &mut Parser) -> Result<Option<Pattern>> {
+/// Parse pattern with OR support (1|2|3)
+fn parse_pattern_or(parser: &mut Parser) -> Result<Option<Pattern>> {
+    let mut patterns = Vec::new();
+    
+    if let Some(pattern) = parse_pattern_primary(parser)? {
+        patterns.push(pattern);
+        
+        // Parse additional patterns separated by |
+        while parser.consume(&Token::Pipe)? {
+            if let Some(pattern) = parse_pattern_primary(parser)? {
+                patterns.push(pattern);
+            } else {
+                return Err(CompilerError::syntax(
+                    parser.current_location().line,
+                    parser.current_location().column,
+                    "Expected pattern after '|'",
+                ));
+            }
+        }
+        
+        // If we have multiple patterns, create an Or pattern
+        if patterns.len() > 1 {
+            Ok(Some(Pattern::Or(patterns)))
+        } else {
+            Ok(Some(patterns.into_iter().next().unwrap()))
+        }
+    } else {
+        Ok(None)
+    }
+}
+
+/// Parse primary pattern (without OR)
+fn parse_pattern_primary(parser: &mut Parser) -> Result<Option<Pattern>> {
     if parser.is_at_end() {
         return Ok(None);
     }
@@ -839,7 +928,7 @@ fn parse_pattern(parser: &mut Parser) -> Result<Option<Pattern>> {
                 
                 if !parser.check(&Token::RightParen) {
                     loop {
-                        if let Some(pattern) = parse_pattern(parser)? {
+                        if let Some(pattern) = parse_pattern_or(parser)? {
                             patterns.push(pattern);
                         }
                         
