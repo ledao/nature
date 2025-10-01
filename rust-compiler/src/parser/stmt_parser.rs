@@ -84,8 +84,8 @@ pub fn parse_statement(parser: &mut Parser) -> Result<Option<Statement>> {
             _ => {
                 // Try to parse as an expression statement
                 if let Some(expr) = parse_expression(parser)? {
-                    // Expression statements should end with semicolon
-                    parser.expect(&Token::Semicolon)?;
+                    // 可选的分号，支持无分号语法
+                    parser.consume(&Token::Semicolon)?;
                     Ok(Some(Statement::Expression(expr)))
                 } else {
                     Ok(None)
@@ -116,7 +116,8 @@ fn parse_variable_declaration(parser: &mut Parser) -> Result<crate::ast::decl::V
             None
         };
         
-        parser.expect(&Token::Semicolon)?;
+        // 可选的分号，支持无分号语法
+        parser.consume(&Token::Semicolon)?;
         
         Ok(crate::ast::decl::VariableDecl {
             name: var_name,
@@ -352,7 +353,8 @@ pub fn parse_return_statement(parser: &mut Parser) -> Result<ReturnStmt> {
         None
     };
     
-    parser.expect(&Token::Semicolon)?;
+    // 可选的分号，支持无分号语法
+    parser.consume(&Token::Semicolon)?;
     
     Ok(ReturnStmt {
         value,

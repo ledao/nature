@@ -198,6 +198,12 @@ impl<'ctx> LLVMBackend<'ctx> {
             Statement::Return(return_stmt) => {
                 self.generate_return_statement(return_stmt)?;
             }
+            Statement::If(if_stmt) => {
+                self.generate_if_statement(if_stmt)?;
+            }
+            Statement::Block(block_stmt) => {
+                self.generate_block_statement(block_stmt)?;
+            }
             _ => {
                 // Other statement types not yet implemented
             }
@@ -212,6 +218,60 @@ impl<'ctx> LLVMBackend<'ctx> {
             let _ = self.builder.build_return(Some(&value));
         } else {
             let _ = self.builder.build_return(None);
+        }
+        Ok(())
+    }
+
+    /// Generate if statement
+    fn generate_if_statement(&mut self, if_stmt: &IfStmt) -> Result<()> {
+        // Generate condition
+        let condition = self.generate_expression(&if_stmt.condition)?;
+        
+        // Create basic blocks
+        let then_block = self.context.append_basic_block(self.current_function.unwrap(), "if.then");
+        let else_block = if if_stmt.else_branch.is_some() {
+            Some(self.context.append_basic_block(self.current_function.unwrap(), "if.else"))
+        } else {
+            None
+        };
+        let end_block = self.context.append_basic_block(self.current_function.unwrap(), "if.end");
+        
+        // Create conditional branch
+        let condition_int = match condition {
+            BasicValueEnum::IntValue(int_val) => int_val,
+            _ => return Err(CompilerError::internal("If condition must be an integer")),
+        };
+        
+        // Convert integer to boolean (i1)
+        let zero = self.context.i32_type().const_int(0, false);
+        let condition_bool = self.builder.build_int_compare(inkwell::IntPredicate::NE, condition_int, zero, "cond_bool")?;
+        
+        let _ = self.builder.build_conditional_branch(condition_bool, then_block, else_block.unwrap_or(end_block));
+        
+        // Generate then block
+        self.builder.position_at_end(then_block);
+        self.generate_statement(&*if_stmt.then_branch)?;
+        let _ = self.builder.build_unconditional_branch(end_block);
+        
+        // Generate else block if present
+        if let Some(else_branch) = &if_stmt.else_branch {
+            if let Some(else_block) = else_block {
+                self.builder.position_at_end(else_block);
+                self.generate_statement(&**else_branch)?;
+                let _ = self.builder.build_unconditional_branch(end_block);
+            }
+        }
+        
+        // Position builder at end block
+        self.builder.position_at_end(end_block);
+        
+        Ok(())
+    }
+
+    /// Generate block statement
+    fn generate_block_statement(&mut self, block_stmt: &BlockStmt) -> Result<()> {
+        for stmt in &block_stmt.statements {
+            self.generate_statement(stmt)?;
         }
         Ok(())
     }
@@ -435,6 +495,96 @@ impl<'ctx> LLVMBackend<'ctx> {
             BinaryOp::Assign => {
                 // Assignment is handled in generate_assignment
                 Ok(right)
+            }
+            BinaryOp::Less => {
+                match (left, right) {
+                    (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) => {
+                        let result = self.builder.build_int_compare(inkwell::IntPredicate::SLT, l, r, "lt")?;
+                        // Convert i1 to i32
+                        Ok(self.builder.build_int_z_extend(result, self.context.i32_type(), "lt_ext")?.into())
+                    }
+                    (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) => {
+                        let result = self.builder.build_float_compare(inkwell::FloatPredicate::OLT, l, r, "flt")?;
+                        // Convert i1 to i32
+                        Ok(self.builder.build_int_z_extend(result, self.context.i32_type(), "flt_ext")?.into())
+                    }
+                    _ => Err(CompilerError::internal("Type mismatch in comparison")),
+                }
+            }
+            BinaryOp::LessEqual => {
+                match (left, right) {
+                    (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) => {
+                        let result = self.builder.build_int_compare(inkwell::IntPredicate::SLE, l, r, "lte")?;
+                        // Convert i1 to i32
+                        Ok(self.builder.build_int_z_extend(result, self.context.i32_type(), "lte_ext")?.into())
+                    }
+                    (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) => {
+                        let result = self.builder.build_float_compare(inkwell::FloatPredicate::OLE, l, r, "flte")?;
+                        // Convert i1 to i32
+                        Ok(self.builder.build_int_z_extend(result, self.context.i32_type(), "flte_ext")?.into())
+                    }
+                    _ => Err(CompilerError::internal("Type mismatch in comparison")),
+                }
+            }
+            BinaryOp::Greater => {
+                match (left, right) {
+                    (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) => {
+                        let result = self.builder.build_int_compare(inkwell::IntPredicate::SGT, l, r, "gt")?;
+                        // Convert i1 to i32
+                        Ok(self.builder.build_int_z_extend(result, self.context.i32_type(), "gt_ext")?.into())
+                    }
+                    (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) => {
+                        let result = self.builder.build_float_compare(inkwell::FloatPredicate::OGT, l, r, "fgt")?;
+                        // Convert i1 to i32
+                        Ok(self.builder.build_int_z_extend(result, self.context.i32_type(), "fgt_ext")?.into())
+                    }
+                    _ => Err(CompilerError::internal("Type mismatch in comparison")),
+                }
+            }
+            BinaryOp::GreaterEqual => {
+                match (left, right) {
+                    (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) => {
+                        let result = self.builder.build_int_compare(inkwell::IntPredicate::SGE, l, r, "gte")?;
+                        // Convert i1 to i32
+                        Ok(self.builder.build_int_z_extend(result, self.context.i32_type(), "gte_ext")?.into())
+                    }
+                    (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) => {
+                        let result = self.builder.build_float_compare(inkwell::FloatPredicate::OGE, l, r, "fgte")?;
+                        // Convert i1 to i32
+                        Ok(self.builder.build_int_z_extend(result, self.context.i32_type(), "fgte_ext")?.into())
+                    }
+                    _ => Err(CompilerError::internal("Type mismatch in comparison")),
+                }
+            }
+            BinaryOp::Equal => {
+                match (left, right) {
+                    (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) => {
+                        let result = self.builder.build_int_compare(inkwell::IntPredicate::EQ, l, r, "eq")?;
+                        // Convert i1 to i32
+                        Ok(self.builder.build_int_z_extend(result, self.context.i32_type(), "eq_ext")?.into())
+                    }
+                    (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) => {
+                        let result = self.builder.build_float_compare(inkwell::FloatPredicate::OEQ, l, r, "feq")?;
+                        // Convert i1 to i32
+                        Ok(self.builder.build_int_z_extend(result, self.context.i32_type(), "feq_ext")?.into())
+                    }
+                    _ => Err(CompilerError::internal("Type mismatch in comparison")),
+                }
+            }
+            BinaryOp::NotEqual => {
+                match (left, right) {
+                    (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) => {
+                        let result = self.builder.build_int_compare(inkwell::IntPredicate::NE, l, r, "neq")?;
+                        // Convert i1 to i32
+                        Ok(self.builder.build_int_z_extend(result, self.context.i32_type(), "neq_ext")?.into())
+                    }
+                    (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) => {
+                        let result = self.builder.build_float_compare(inkwell::FloatPredicate::ONE, l, r, "fneq")?;
+                        // Convert i1 to i32
+                        Ok(self.builder.build_int_z_extend(result, self.context.i32_type(), "fneq_ext")?.into())
+                    }
+                    _ => Err(CompilerError::internal("Type mismatch in comparison")),
+                }
             }
             _ => {
                 Err(CompilerError::internal("Unsupported binary operator"))
