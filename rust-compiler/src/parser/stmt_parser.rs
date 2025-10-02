@@ -421,8 +421,7 @@ pub fn parse_return_statement(parser: &mut Parser) -> Result<ReturnStmt> {
         || matches!(parser.peek().map(|t| &t.token), 
             Some(Token::Var) | Some(Token::If) | Some(Token::For) | 
             Some(Token::While) | Some(Token::Return) | Some(Token::Break) | 
-            Some(Token::Continue) | Some(Token::Defer) | Some(Token::Match) |
-            Some(Token::Identifier(_)))  // 可能是下一个语句的开始
+            Some(Token::Continue) | Some(Token::Defer) | Some(Token::Match))
     {
         None
     } else {
@@ -430,7 +429,7 @@ pub fn parse_return_statement(parser: &mut Parser) -> Result<ReturnStmt> {
     };
     
     // 可选的分号，支持无分号语法
-    parser.consume(&Token::Semicolon)?;
+    parser.consume(&Token::Semicolon).ok();
     
     Ok(ReturnStmt {
         value,

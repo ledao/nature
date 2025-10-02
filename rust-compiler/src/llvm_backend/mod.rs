@@ -216,6 +216,9 @@ impl<'ctx> LLVMBackend<'ctx> {
             }
         }
         
+        // 清空变量映射，防止跨函数引用
+        self.variable_map.clear();
+        
         Ok(())
     }
 
@@ -397,7 +400,10 @@ impl<'ctx> LLVMBackend<'ctx> {
 
     /// Generate variable declaration
     fn generate_variable_declaration(&mut self, var_decl: &VariableDeclStmt) -> Result<()> {
-        let _ = self.nature_type_to_llvm_type(&var_decl.var_type)?;
+        let var_type = self.nature_type_to_llvm_type(&var_decl.var_type)?;
+        
+        // Create alloca for the variable
+        let alloca = self.builder.build_alloca(var_type, &var_decl.name)?;
         
         if let Some(ref init_expr) = var_decl.initializer {
             let value = self.generate_expression(init_expr)?;
@@ -408,11 +414,18 @@ impl<'ctx> LLVMBackend<'ctx> {
                 self.generate_rc_increment(&value)?;
             }
             
-            self.variable_map.insert(var_decl.name.clone(), value);
+            // Store the initial value
+            let _ = self.builder.build_store(alloca, value);
+            
+            // Store the alloca in variable map for future references
+            self.variable_map.insert(var_decl.name.clone(), alloca.into());
         } else {
             // Initialize with default value (0 for integers)
-            let default_value = self.context.i32_type().const_int(0, false).into();
-            self.variable_map.insert(var_decl.name.clone(), default_value);
+            let default_value = self.context.i32_type().const_int(0, false);
+            let _ = self.builder.build_store(alloca, default_value);
+            
+            // Store the alloca in variable map for future references
+            self.variable_map.insert(var_decl.name.clone(), alloca.into());
         }
         
         Ok(())
@@ -424,24 +437,33 @@ impl<'ctx> LLVMBackend<'ctx> {
         
         match &assign_stmt.target {
             AssignmentTarget::Variable(name) => {
-                // 检查是否是引用计数的指针类型
-                if self.is_reference_counted_pointer(&value) {
-                    // 如果变量已存在，使用rc_assign来管理引用计数
-                    let old_value = self.variable_map.get(name).cloned();
-                    if let Some(old_value) = old_value {
-                        if self.is_reference_counted_pointer(&old_value) {
-                            self.generate_rc_assign(&old_value, &value)?;
+                if let Some(var_alloca) = self.variable_map.get(name).cloned() {
+                    // 检查是否是引用计数的指针类型
+                    if self.is_reference_counted_pointer(&value) {
+                        // 如果变量已存在，使用rc_assign来管理引用计数
+                        let old_value = self.variable_map.get(name).cloned();
+                        if let Some(old_value) = old_value {
+                            if self.is_reference_counted_pointer(&old_value) {
+                                self.generate_rc_assign(&old_value, &value)?;
+                            } else {
+                                // 旧值不是引用计数类型，只增加新值的引用计数
+                                self.generate_rc_increment(&value)?;
+                            }
                         } else {
-                            // 旧值不是引用计数类型，只增加新值的引用计数
+                            // 变量不存在，只增加新值的引用计数
                             self.generate_rc_increment(&value)?;
                         }
-                    } else {
-                        // 变量不存在，只增加新值的引用计数
-                        self.generate_rc_increment(&value)?;
                     }
+                    
+                    // Store the value to the alloca
+                    if var_alloca.is_pointer_value() {
+                        let _ = self.builder.build_store(var_alloca.into_pointer_value(), value);
+                    } else {
+                        return Err(CompilerError::internal("Variable is not a pointer"));
+                    }
+                } else {
+                    return Err(CompilerError::internal(&format!("Undefined variable: {}", name)));
                 }
-                
-                self.variable_map.insert(name.clone(), value);
             }
             _ => {
                 return Err(CompilerError::internal("Unsupported assignment target"));
@@ -458,9 +480,22 @@ impl<'ctx> LLVMBackend<'ctx> {
                 self.generate_literal(lit)
             }
             Expression::Variable(name) => {
-                self.variable_map.get(name)
-                    .cloned()
-                    .ok_or_else(|| CompilerError::internal(&format!("Undefined variable: {}", name)))
+                if let Some(var_value) = self.variable_map.get(name) {
+                    // If the variable is an alloca (pointer), load its value
+                    if var_value.is_pointer_value() {
+                        let pointer_value = var_value.into_pointer_value();
+                        // Since get_element_type is not available, we'll use a generic load
+                        // with the i32 type for now
+                        let element_type = self.context.i32_type();
+                        let loaded_value = self.builder.build_load(element_type, pointer_value, name)?;
+                        Ok(loaded_value)
+                    } else {
+                        // If it's already a value (like function parameters), return it directly
+                        Ok(*var_value)
+                    }
+                } else {
+                    Err(CompilerError::internal(&format!("Undefined variable: {}", name)))
+                }
             }
             Expression::Call(call) => {
                 self.generate_call_expression(call)
@@ -1260,10 +1295,11 @@ impl<'ctx> LLVMBackend<'ctx> {
     }
     
     /// 检查值是否是引用计数的指针
-    fn is_reference_counted_pointer(&self, value: &BasicValueEnum<'ctx>) -> bool {
-        // 简单实现：所有指针都认为是引用计数的
-        // TODO: 根据类型信息更精确地判断
-        matches!(value, BasicValueEnum::PointerValue(_))
+    fn is_reference_counted_pointer(&self, _value: &BasicValueEnum<'ctx>) -> bool {
+        // 对于基本类型的 alloca 指针，不应该进行引用计数管理
+        // 只有真正的引用计数类型（如字符串、结构体等）才需要管理
+        // 目前暂时返回 false，避免对基本类型进行引用计数管理
+        false
     }
     
     /// 生成引用计数增加的代码
