@@ -78,11 +78,11 @@ rust-compiler/
 
 ### basic.n
 ```nature
-fn add(int a, int b): int {
+func add(int a, int b): int {
     return a + b;
 }
 
-fn main() {   
+func main() {   
     println("hello nature\n");
     println("3 + 2 = ", add(3, 2));
 }
@@ -90,19 +90,19 @@ fn main() {
 
 ### test_builtins.n
 ```nature
-fn test_print() {
+func test_print() {
     print("Hello ");
     println("World!");
     println("Numbers: ", 42, " and ", 3.14);
 }
 
-fn test_len() {
+func test_len() {
     var text = "Hello Nature";
     var length = len(text);
     println("Length of '", text, "' is ", length);
 }
 
-fn main() {
+func main() {
     test_print();
     test_len();
 }

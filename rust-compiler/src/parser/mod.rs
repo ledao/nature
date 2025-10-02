@@ -382,14 +382,14 @@ mod tests {
 
     #[test]
     fn test_parser_creation() {
-        let source = "fn main() { return 42; }".to_string();
+        let source = "func main() { return 42; }".to_string();
         let parser = Parser::new(source, Some("test.n".to_string()));
         assert!(parser.current.is_none());
     }
 
     #[test]
     fn test_parser_advance() {
-        let source = "fn main()".to_string();
+        let source = "func main()".to_string();
         let mut parser = Parser::new(source, None);
         parser.advance().unwrap();
         
@@ -399,7 +399,7 @@ mod tests {
 
     #[test]
     fn test_parser_check() {
-        let source = "fn main()".to_string();
+        let source = "func main()".to_string();
         let mut parser = Parser::new(source, None);
         parser.advance().unwrap();
         
@@ -409,7 +409,7 @@ mod tests {
 
     #[test]
     fn test_parser_consume() {
-        let source = "fn main()".to_string();
+        let source = "func main()".to_string();
         let mut parser = Parser::new(source, None);
         parser.advance().unwrap();
         

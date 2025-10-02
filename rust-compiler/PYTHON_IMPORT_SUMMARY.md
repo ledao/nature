@@ -6,7 +6,7 @@
 ```nature
 from std.io import printf, println
 
-fn main() {
+func main() {
     println("Hello from named import!")
     printf("Number: %d\n", 42)
 }
@@ -16,7 +16,7 @@ fn main() {
 ```nature
 import std.io
 
-fn main() {
+func main() {
     io.println("Hello from simple import!")
     io.printf("Number: %d\n", 42)
 }
@@ -26,7 +26,7 @@ fn main() {
 ```nature
 import std.io as aio
 
-fn main() {
+func main() {
     aio.println("Hello from alias import!")
     aio.printf("Number: %d\n", 42)
 }
@@ -85,7 +85,7 @@ from std.io import printf, println
 import std.io
 import std.io as aio
 
-fn main() {
+func main() {
     // 命名导入
     println("Hello from named import!")
     printf("Number: %d\n", 42)

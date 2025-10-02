@@ -10,7 +10,7 @@ use inkwell::AddressSpace;
 
 /// LLVM backend for code generation
 pub struct LLVMBackend<'ctx> {
-    /// LLVM context
+/// LLVM context
     pub context: &'ctx Context,
     /// LLVM module
     pub module: Module<'ctx>,
@@ -906,7 +906,7 @@ impl<'ctx> LLVMBackend<'ctx> {
         // Get llc command based on target
         let llc_cmd = if let Some(target) = target_config {
             target.get_llc_command()
-        } else {
+                } else {
             "llc-15"
         };
         
@@ -962,8 +962,8 @@ impl<'ctx> LLVMBackend<'ctx> {
                     link_cmd_builder
                         .arg("-static")
                         .arg("-lc");
-                }
-                _ => {
+            }
+            _ => {
                     // Default to gcc-style linking
                     link_cmd_builder
                         .arg("-static")

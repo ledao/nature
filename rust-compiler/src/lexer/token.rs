@@ -26,9 +26,14 @@ pub enum Token {
     #[regex(r"'([^'\\]|\\.)'", |lex| lex.slice().chars().nth(1).unwrap())]
     Char(char),
 
+    // Identifiers (must come before keywords to avoid conflicts)
+    /// Identifier token
+    #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
+    Identifier(String),
+
     // Keywords
     /// Function keyword
-    #[token("fn")]
+    #[token("func")]
     Fn,
     /// Let keyword
     #[token("let")]
@@ -171,10 +176,6 @@ pub enum Token {
     #[token("tup")]
     Tup,
 
-    // Identifiers
-    /// Identifier token
-    #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
-    Identifier(String),
 
     // Operators
     /// Plus operator
@@ -427,7 +428,7 @@ mod tests {
 
     #[test]
     fn test_token_parsing() {
-        let mut lexer = Token::lexer("fn main() { return 42; }");
+        let mut lexer = Token::lexer("func main() { return 42; }");
         
         assert_eq!(lexer.next(), Some(Ok(Token::Fn)));
         assert_eq!(lexer.next(), Some(Ok(Token::Identifier("main".to_string()))));

@@ -1,4 +1,6 @@
-fn main() {
+from fmt import println
+
+func main() {
     println("=== Nature Language Test ===")
     
     println("Hello World!")

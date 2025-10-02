@@ -1,17 +1,17 @@
 // std/fmt.n - Standard formatting module for Nature
 // Provides printf, println, and print functions
 
-fn printf(string format) {
+func printf(string format) {
     // Implementation will be handled by LLVM backend
     // This is just a declaration for the module system
 }
 
-fn println() {
+func println() {
     // Implementation will be handled by LLVM backend
     // This is just a declaration for the module system
 }
 
-fn print() {
+func print() {
     // Implementation will be handled by LLVM backend
     // This is just a declaration for the module system
 }

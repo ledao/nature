@@ -149,7 +149,7 @@ mod tests {
     fn test_program_creation() {
         let source_info = SourceInfo {
             file_path: Some("test.n".to_string()),
-            source_code: "fn main() { return 42; }".to_string(),
+            source_code: "func main() { return 42; }".to_string(),
         };
 
         let program = Program::new(vec![], source_info);

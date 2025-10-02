@@ -1,0 +1,32 @@
+// Function call test
+// Demonstrates Nature language function definition and calling
+
+from fmt import println
+
+func test_print() {
+    println("This is a test function")
+}
+
+func test_print2() {
+    println("This is another test function")
+}
+
+func add(int a, int b) {
+    var result = a + b
+    println("Result: ", result)
+}
+
+func main() {
+    println("=== Function Call Test ===")
+    
+    // Test function calls
+    test_print()
+    test_print2()
+    
+    // Test add function
+    println("Testing add function:")
+    add(5, 3)
+    add(10, 20)
+    
+    println("=== Test Complete ===")
+}

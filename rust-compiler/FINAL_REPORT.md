@@ -192,7 +192,7 @@ rust-compiler/
 
 ### 1. **Hello World**
 ```nature
-fn main() {
+func main() {
     println("Hello, World!");
     return 0;
 }
@@ -200,7 +200,7 @@ fn main() {
 
 ### 2. **斐波那契数列**
 ```nature
-fn fibonacci(n: i32) -> i32 {
+func fibonacci(n: i32) -> i32 {
     if n <= 1 {
         return n;
     }
@@ -210,7 +210,7 @@ fn fibonacci(n: i32) -> i32 {
 
 ### 3. **快速排序**
 ```nature
-fn quicksort(arr: [i32], low: i32, high: i32) {
+func quicksort(arr: [i32], low: i32, high: i32) {
     if low < high {
         let pi = partition(arr, low, high);
         quicksort(arr, low, pi - 1);
@@ -226,7 +226,7 @@ struct Node {
     next: *Node,
 }
 
-fn insert(list: *LinkedList, data: i32) {
+func insert(list: *LinkedList, data: i32) {
     let new_node = create_node(data);
     new_node.next = list.head;
     list.head = new_node;

@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn test_lexer_basic() {
-        let source = "fn main() { return 42; }".to_string();
+        let source = "func main() { return 42; }".to_string();
         let lexer = Lexer::new(source);
         
         let tokens: Result<Vec<_>> = lexer.collect();
@@ -258,7 +258,7 @@ mod tests {
 
     #[test]
     fn test_lexer_peek() {
-        let source = "fn main()".to_string();
+        let source = "func main()".to_string();
         let mut lexer = Lexer::new(source);
         
         let peeked = lexer.peek_token().unwrap().unwrap();
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn test_lexer_multiline() {
-        let source = "fn main() {\n    return 42;\n}".to_string();
+        let source = "func main() {\n    return 42;\n}".to_string();
         let lexer = Lexer::new(source);
         
         let tokens: Result<Vec<_>> = lexer.collect();
