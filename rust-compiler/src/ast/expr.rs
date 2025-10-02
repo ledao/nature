@@ -54,6 +54,8 @@ pub enum Expression {
     Select(SelectExpr),
     /// Go expression (goroutine)
     Go(GoExpr),
+    /// New expression for creating reference-counted objects
+    New(NewExpr),
 }
 
 /// Literal values
@@ -516,6 +518,17 @@ pub struct GoExpr {
     pub location: Location,
 }
 
+/// New expression for creating reference-counted objects
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewExpr {
+    /// Type to instantiate
+    pub type_name: String,
+    /// Initializer expression (struct literal, etc.)
+    pub initializer: Option<Box<Expression>>,
+    /// Location in source
+    pub location: Location,
+}
+
 // Re-export types from types module
 use crate::ast::types::{Type, Parameter};
 use crate::ast::stmt::Statement;
@@ -553,6 +566,7 @@ impl Expression {
             Expression::Try(expr) => expr.location,
             Expression::Select(expr) => expr.location,
             Expression::Go(expr) => expr.location,
+            Expression::New(expr) => expr.location,
         }
     }
 }

@@ -558,6 +558,11 @@ fn parse_primary(parser: &mut Parser) -> Result<Option<Expression>> {
                 parse_go_expression(parser)
             }
             
+            // New expressions
+            Token::New => {
+                parse_new_expression(parser)
+            }
+            
             _ => Ok(None),
         }
         None => Ok(None),
@@ -1157,4 +1162,74 @@ fn parse_go_expression(parser: &mut Parser) -> Result<Option<Expression>> {
             "Expected function call after 'go'",
         ))
     }
+}
+
+/// Parse new expression for creating reference-counted objects
+fn parse_new_expression(parser: &mut Parser) -> Result<Option<Expression>> {
+    parser.expect(&Token::New)?;
+    
+    // Parse type name
+    let type_name = match parser.peek().map(|t| &t.token) {
+        Some(Token::Identifier(name)) => {
+            let name = name.clone();
+            parser.advance()?;
+            name
+        }
+        Some(Token::Int) => {
+            parser.advance()?;
+            "int".to_string()
+        }
+        Some(Token::I8) => {
+            parser.advance()?;
+            "i8".to_string()
+        }
+        Some(Token::I16) => {
+            parser.advance()?;
+            "i16".to_string()
+        }
+        Some(Token::I64) => {
+            parser.advance()?;
+            "i64".to_string()
+        }
+        Some(Token::F32) => {
+            parser.advance()?;
+            "f32".to_string()
+        }
+        Some(Token::F64) => {
+            parser.advance()?;
+            "f64".to_string()
+        }
+        Some(Token::Bool) => {
+            parser.advance()?;
+            "bool".to_string()
+        }
+        _ => {
+            return Err(CompilerError::syntax(
+                parser.current_location().line,
+                parser.current_location().column,
+                "Expected type name after 'new'",
+            ));
+        }
+    };
+    
+    // Parse optional initializer
+    let initializer = if parser.consume(&Token::LeftBrace)? {
+        // Struct literal initializer
+        let expr = parse_expression(parser)?;
+        parser.expect(&Token::RightBrace)?;
+        expr.map(Box::new)
+    } else if parser.consume(&Token::LeftParen)? {
+        // Function call initializer
+        let expr = parse_expression(parser)?;
+        parser.expect(&Token::RightParen)?;
+        expr.map(Box::new)
+    } else {
+        None
+    };
+    
+    Ok(Some(Expression::New(NewExpr {
+        type_name,
+        initializer,
+        location: parser.current_location(),
+    })))
 }

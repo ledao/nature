@@ -1,7 +1,0 @@
-// module_test.n - Test Python-style module system
-from fmt import printf, println
-
-fn main() {
-    println("Hello from Python-style module system!")
-    printf("Number: %d\n", 42)
-}

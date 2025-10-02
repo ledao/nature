@@ -93,6 +93,9 @@ pub enum Token {
     /// Defer keyword
     #[token("defer")]
     Defer,
+    /// New keyword for creating reference-counted objects
+    #[token("new")]
+    New,
     /// As keyword
     #[token("as")]
     As,

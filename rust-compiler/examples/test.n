@@ -1,0 +1,14 @@
+fn main() {
+    println("=== Nature Language Test ===")
+    
+    println("Hello World!")
+    
+    var obj1 = new int
+    var obj2 = new int
+    println("Created GC objects")
+    
+    obj1 = obj2
+    println("Assignment completed")
+    
+    println("=== Test Complete ===")
+}

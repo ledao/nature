@@ -274,6 +274,7 @@ fn parse_pointer_type(parser: &mut Parser) -> Result<Option<Type>> {
             Ok(Some(Type::Pointer(PointerType {
                 pointee_type: Box::new(base_type),
                 mutable: false, // Always false since we don't support mut
+                reference_counted: false, // Default to non-reference-counted
                 location: parser.current_location(),
             })))
         } else {

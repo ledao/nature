@@ -14,6 +14,8 @@ pub mod semantic;
 pub mod type_check;
 /// LLVM backend for code generation
 pub mod llvm_backend;
+/// Runtime functions for garbage collection
+pub mod runtime;
 
 // LLVM 相关导入
 pub mod utils;

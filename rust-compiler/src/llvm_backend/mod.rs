@@ -88,6 +88,24 @@ impl<'ctx> LLVMBackend<'ctx> {
         let len_func = self.module.add_function("strlen", len_type, None);
         self.function_map.insert("len".to_string(), len_func);
         
+        // 声明引用计数管理函数（C包装器函数）
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        
+        // __rc_increment: 增加引用计数
+        let rc_increment_type = self.context.void_type().fn_type(&[i8_ptr_type.into()], false);
+        let rc_increment_func = self.module.add_function("__rc_increment_wrapper", rc_increment_type, None);
+        self.function_map.insert("__rc_increment".to_string(), rc_increment_func);
+        
+        // __rc_decrement: 减少引用计数，如果为0则释放内存
+        let rc_decrement_type = self.context.void_type().fn_type(&[i8_ptr_type.into()], false);
+        let rc_decrement_func = self.module.add_function("__rc_decrement_wrapper", rc_decrement_type, None);
+        self.function_map.insert("__rc_decrement".to_string(), rc_decrement_func);
+        
+        // __rc_assign: 赋值时管理引用计数（先减后增）
+        let rc_assign_type = self.context.void_type().fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
+        let rc_assign_func = self.module.add_function("__rc_assign_wrapper", rc_assign_type, None);
+        self.function_map.insert("__rc_assign_wrapper".to_string(), rc_assign_func);
+        
         Ok(())
     }
     
@@ -176,6 +194,9 @@ impl<'ctx> LLVMBackend<'ctx> {
         // 如果没有遇到return语句，在函数结束前执行所有defer语句（LIFO顺序）
         if !has_return {
             self.execute_defer_statements()?;
+            
+            // 清理所有引用计数的变量
+            self.cleanup_reference_counted_variables()?;
             
             // Add return statement if function returns void or没有显式返回
             if function.get_type().get_return_type().is_none() {
@@ -376,10 +397,17 @@ impl<'ctx> LLVMBackend<'ctx> {
 
     /// Generate variable declaration
     fn generate_variable_declaration(&mut self, var_decl: &VariableDeclStmt) -> Result<()> {
-        let _var_type = self.nature_type_to_llvm_type(&var_decl.var_type)?;
+        let _ = self.nature_type_to_llvm_type(&var_decl.var_type)?;
         
         if let Some(ref init_expr) = var_decl.initializer {
             let value = self.generate_expression(init_expr)?;
+            
+            // 检查是否是引用计数的指针类型
+            if self.is_reference_counted_pointer(&value) {
+                // 增加引用计数
+                self.generate_rc_increment(&value)?;
+            }
+            
             self.variable_map.insert(var_decl.name.clone(), value);
         } else {
             // Initialize with default value (0 for integers)
@@ -396,6 +424,23 @@ impl<'ctx> LLVMBackend<'ctx> {
         
         match &assign_stmt.target {
             AssignmentTarget::Variable(name) => {
+                // 检查是否是引用计数的指针类型
+                if self.is_reference_counted_pointer(&value) {
+                    // 如果变量已存在，使用rc_assign来管理引用计数
+                    let old_value = self.variable_map.get(name).cloned();
+                    if let Some(old_value) = old_value {
+                        if self.is_reference_counted_pointer(&old_value) {
+                            self.generate_rc_assign(&old_value, &value)?;
+                        } else {
+                            // 旧值不是引用计数类型，只增加新值的引用计数
+                            self.generate_rc_increment(&value)?;
+                        }
+                    } else {
+                        // 变量不存在，只增加新值的引用计数
+                        self.generate_rc_increment(&value)?;
+                    }
+                }
+                
                 self.variable_map.insert(name.clone(), value);
             }
             _ => {
@@ -428,6 +473,9 @@ impl<'ctx> LLVMBackend<'ctx> {
             }
             Expression::Match(match_expr) => {
                 self.generate_match_expression(match_expr)
+            }
+            Expression::New(new_expr) => {
+                self.generate_new_expression(new_expr)
             }
             _ => {
                 Err(CompilerError::internal("Unsupported expression type"))
@@ -699,7 +747,8 @@ impl<'ctx> LLVMBackend<'ctx> {
                 }
             }
             BinaryOp::Assign => {
-                // Assignment is handled in generate_assignment
+                // Handle assignment operation
+                self.handle_assignment_expression(left, right)?;
                 Ok(right)
             }
             BinaryOp::Less => {
@@ -928,27 +977,40 @@ impl<'ctx> LLVMBackend<'ctx> {
             link_cmd_builder
                 .arg("-static")
                 .arg("-no-pie")
-                .arg("-Wl,--gc-sections")
-                .arg("-Wl,--strip-all")
-                .arg("-Wl,--build-id=none")
                 .arg("-lc")
                 .arg("-lm");
         }
         
+        // 编译C包装器文件
+        let wrapper_c_file = std::env::current_dir()?.join("src/runtime/gc_wrapper.c");
+        let wrapper_o_file = temp_dir.join("gc_wrapper.o");
+        
+        if wrapper_c_file.exists() {
+            let gcc_result = Command::new("gcc")
+                .arg("-c")
+                .arg("-o")
+                .arg(&wrapper_o_file)
+                .arg(&wrapper_c_file)
+                .output();
+                
+            if let Ok(output) = gcc_result {
+                if output.status.success() {
+                    link_cmd_builder.arg(&wrapper_o_file);
+                }
+            }
+        }
         let link_result = link_cmd_builder
             .arg(&obj_file)
             .arg("-o")
             .arg(output_path)
             .output();
             
-        if link_result.is_err() {
+        if let Ok(output) = link_result {
+            if !output.status.success() {
+                return Err(CompilerError::internal("linker failed"));
+            }
+        } else {
             return Err(CompilerError::internal("linker not found or failed"));
-        }
-        
-        let link_output = link_result.unwrap();
-        if !link_output.status.success() {
-            let error_msg = String::from_utf8_lossy(&link_output.stderr);
-            return Err(CompilerError::internal(&format!("Linker failed: {}", error_msg)));
         }
         
         
@@ -1087,6 +1149,195 @@ impl<'ctx> LLVMBackend<'ctx> {
         // 按照LIFO顺序执行defer语句（后进先出）
         while let Some(defer_expr) = self.defer_stack.pop() {
             let _ = self.generate_expression(&defer_expr)?;
+        }
+        Ok(())
+    }
+    
+    /// Generate new expression for creating reference-counted objects
+    fn generate_new_expression(&mut self, new_expr: &NewExpr) -> Result<BasicValueEnum<'ctx>> {
+        // 1. 确定数据类型
+        let data_type = match new_expr.type_name.as_str() {
+            "int" | "i32" => self.context.i32_type().into(),
+            "i8" => self.context.i8_type().into(),
+            "i16" => self.context.i16_type().into(),
+            "i64" => self.context.i64_type().into(),
+            "f32" => self.context.f32_type().into(),
+            "f64" => self.context.f64_type().into(),
+            "bool" => self.context.bool_type().into(),
+            _ => {
+                // 对于复杂类型，暂时使用i32作为占位符
+                // TODO: 实现完整的类型系统查找
+                self.context.i32_type().into()
+            }
+        };
+        
+        // 2. 创建引用计数对象结构：{ref_count: i32, data: T}
+        let struct_type = match data_type {
+            BasicTypeEnum::IntType(int_type) => {
+                self.context.struct_type(&[self.context.i32_type().into(), int_type.into()], false)
+            }
+            BasicTypeEnum::FloatType(float_type) => {
+                self.context.struct_type(&[self.context.i32_type().into(), float_type.into()], false)
+            }
+            _ => {
+                // 默认结构：{ref_count: i32, data: i32}
+                self.context.struct_type(&[self.context.i32_type().into(), self.context.i32_type().into()], false)
+            }
+        };
+        
+        // 3. 分配内存
+        let malloc_func = self.module.get_function("malloc").unwrap_or_else(|| {
+            let malloc_type = self.context.i8_type().ptr_type(AddressSpace::default()).fn_type(&[self.context.i64_type().into()], false);
+            self.module.add_function("malloc", malloc_type, None)
+        });
+        
+        let size = struct_type.size_of().unwrap();
+        let ptr = self.builder.build_call(malloc_func, &[size.into()], "malloc_call")?;
+        let ptr_value = ptr.try_as_basic_value().left().unwrap();
+        
+        // 将i8*指针转换为结构体指针
+        let struct_ptr = match ptr_value {
+            BasicValueEnum::PointerValue(ptr_val) => {
+                self.builder.build_bitcast(ptr_val, struct_type.ptr_type(AddressSpace::default()), "struct_ptr")?
+            }
+            _ => return Err(CompilerError::internal("Expected pointer value from malloc")),
+        };
+        
+        // 将BasicValueEnum转换为PointerValue
+        let struct_ptr_value = match struct_ptr {
+            BasicValueEnum::PointerValue(ptr) => ptr,
+            _ => return Err(CompilerError::internal("Expected pointer value from bitcast")),
+        };
+        
+        // 4. 初始化引用计数为1
+        
+        // 初始化引用计数字段
+        let ref_count_ptr = unsafe {
+            self.builder.build_gep(
+                struct_type,
+                struct_ptr_value,
+                &[self.context.i32_type().const_int(0, false), self.context.i32_type().const_int(0, false)],
+                "ref_count_ptr"
+            )?
+        };
+        
+        let initial_ref_count = self.context.i32_type().const_int(1, false);
+        self.builder.build_store(ref_count_ptr, initial_ref_count)?;
+        
+        // 5. 如果有初始化器，执行初始化
+        if let Some(ref initializer) = new_expr.initializer {
+            let data_ptr = unsafe {
+                self.builder.build_gep(
+                    struct_type,
+                    struct_ptr_value,
+                    &[self.context.i32_type().const_int(0, false), self.context.i32_type().const_int(1, false)],
+                    "data_ptr"
+                )?
+            };
+            
+            let init_value = self.generate_expression(initializer)?;
+            self.builder.build_store(data_ptr, init_value)?;
+        } else {
+            // 如果没有初始化器，将数据字段初始化为0
+            let data_ptr = unsafe {
+                self.builder.build_gep(
+                    struct_type,
+                    struct_ptr_value,
+                    &[self.context.i32_type().const_int(0, false), self.context.i32_type().const_int(1, false)],
+                    "data_ptr"
+                )?
+            };
+            
+            let zero_value: BasicValueEnum<'ctx> = match data_type {
+                BasicTypeEnum::IntType(int_type) => int_type.const_int(0, false).into(),
+                BasicTypeEnum::FloatType(float_type) => float_type.const_float(0.0).into(),
+                _ => self.context.i32_type().const_int(0, false).into(),
+            };
+            self.builder.build_store(data_ptr, zero_value)?;
+        }
+        
+        Ok(struct_ptr_value.into())
+    }
+    
+    /// 检查值是否是引用计数的指针
+    fn is_reference_counted_pointer(&self, value: &BasicValueEnum<'ctx>) -> bool {
+        // 简单实现：所有指针都认为是引用计数的
+        // TODO: 根据类型信息更精确地判断
+        matches!(value, BasicValueEnum::PointerValue(_))
+    }
+    
+    /// 生成引用计数增加的代码
+    fn generate_rc_increment(&mut self, ptr: &BasicValueEnum<'ctx>) -> Result<()> {
+        if let BasicValueEnum::PointerValue(ptr_value) = ptr {
+            let rc_increment_func = self.function_map.get("__rc_increment")
+                .ok_or_else(|| CompilerError::internal("__rc_increment function not found"))?;
+            
+            // 将指针转换为i8*类型（通用指针类型）
+            let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+            let generic_ptr = self.builder.build_bitcast(*ptr_value, i8_ptr_type, "generic_ptr")?;
+            
+            let _ = self.builder.build_call(*rc_increment_func, &[generic_ptr.into()], "rc_increment_call");
+        }
+        Ok(())
+    }
+    
+    /// 生成引用计数减少的代码
+    fn generate_rc_decrement(&mut self, ptr: &BasicValueEnum<'ctx>) -> Result<()> {
+        if let BasicValueEnum::PointerValue(ptr_value) = ptr {
+            let rc_decrement_func = self.function_map.get("__rc_decrement")
+                .ok_or_else(|| CompilerError::internal("__rc_decrement function not found"))?;
+            
+            // 将指针转换为i8*类型（通用指针类型）
+            let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+            let generic_ptr = self.builder.build_bitcast(*ptr_value, i8_ptr_type, "generic_ptr")?;
+            
+            let _ = self.builder.build_call(*rc_decrement_func, &[generic_ptr.into()], "rc_decrement_call");
+        }
+        Ok(())
+    }
+    
+    /// 生成引用计数赋值的代码（先减后增）
+    fn generate_rc_assign(&mut self, old_ptr: &BasicValueEnum<'ctx>, new_ptr: &BasicValueEnum<'ctx>) -> Result<()> {
+        if let (BasicValueEnum::PointerValue(old_ptr_value), BasicValueEnum::PointerValue(new_ptr_value)) = (old_ptr, new_ptr) {
+            let rc_assign_func = self.function_map.get("__rc_assign_wrapper")
+                .ok_or_else(|| CompilerError::internal("__rc_assign_wrapper function not found"))?;
+            
+            // 将指针转换为i8*类型（通用指针类型）
+            let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+            let old_generic_ptr = self.builder.build_bitcast(*old_ptr_value, i8_ptr_type, "old_generic_ptr")?;
+            let new_generic_ptr = self.builder.build_bitcast(*new_ptr_value, i8_ptr_type, "new_generic_ptr")?;
+            
+            let _ = self.builder.build_call(*rc_assign_func, &[old_generic_ptr.into(), new_generic_ptr.into()], "rc_assign_call");
+        }
+        Ok(())
+    }
+    
+    /// 处理赋值表达式
+    fn handle_assignment_expression(&mut self, left: BasicValueEnum<'ctx>, right: BasicValueEnum<'ctx>) -> Result<()> {
+        // 检查右值是否是引用计数的指针类型
+        if self.is_reference_counted_pointer(&right) {
+            // 检查左值是否是引用计数的指针类型
+            if self.is_reference_counted_pointer(&left) {
+                // 使用rc_assign来管理引用计数
+                self.generate_rc_assign(&left, &right)?;
+            } else {
+                // 只增加右值的引用计数
+                self.generate_rc_increment(&right)?;
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// 清理所有引用计数的变量
+    fn cleanup_reference_counted_variables(&mut self) -> Result<()> {
+        let values: Vec<BasicValueEnum<'ctx>> = self.variable_map.values()
+            .filter(|value| self.is_reference_counted_pointer(value))
+            .cloned()
+            .collect();
+        
+        for value in values {
+            self.generate_rc_decrement(&value)?;
         }
         Ok(())
     }

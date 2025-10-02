@@ -170,6 +170,8 @@ pub struct PointerType {
     pub pointee_type: Box<Type>,
     /// Is mutable
     pub mutable: bool,
+    /// Is reference-counted (managed by GC)
+    pub reference_counted: bool,
     /// Location in source
     pub location: Location,
 }
@@ -500,6 +502,7 @@ mod tests {
         let pointer_type = Type::Pointer(PointerType {
             pointee_type: Box::new(pointee_type),
             mutable: true,
+            reference_counted: false,
             location,
         });
 

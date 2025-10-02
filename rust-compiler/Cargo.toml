@@ -49,6 +49,9 @@ rayon = "1.8"
 # CLI
 clap = { version = "4.4", features = ["derive"] }
 
+[build-dependencies]
+# No build dependencies needed for Rust runtime
+
 [dev-dependencies]
 # Testing
 criterion = "0.5"

@@ -182,7 +182,8 @@ mod tests {
         
         let pointer_type = Type::Pointer(PointerType {
             pointee_type: Box::new(Type::Basic(crate::ast::types::BasicType::I32)),
-            is_mutable: true,
+            mutable: true,
+            reference_counted: false,
             location: crate::error::Location::new(0, 0, 0),
         });
         
