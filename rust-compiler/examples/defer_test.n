@@ -1,0 +1,142 @@
+// Defer statement test file
+// Tests basic defer functionality
+
+from fmt import println
+
+// Test 1: Basic defer functionality
+func test_basic_defer() {
+    println("=== Test 1: Basic Defer ===")
+    println("Function start")
+    
+    defer println("Defer 1: First defer")
+    defer println("Defer 2: Second defer")
+    defer println("Defer 3: Third defer")
+    
+    println("Function body")
+    println("Function end")
+}
+
+// Test 2: Defer with return statement
+func test_defer_with_return() {
+    println("=== Test 2: Defer with Return ===")
+    println("Function start")
+    
+    defer println("Defer: This should execute before return")
+    
+    println("Before return")
+    return 42
+}
+
+// Test 3: Multiple defers with return
+func test_multiple_defers_with_return() {
+    println("=== Test 3: Multiple Defers with Return ===")
+    println("Function start")
+    
+    defer println("Defer 1: Should execute third")
+    defer println("Defer 2: Should execute second") 
+    defer println("Defer 3: Should execute first")
+    
+    println("Before return")
+    return 100
+}
+
+// Test 4: Defer with simple operations
+func test_defer_simple() {
+    println("=== Test 4: Defer with Simple Operations ===")
+    var counter = 0
+    println("Initial counter:", counter)
+    
+    defer println("Defer: Counter will be processed")
+    
+    counter = 5
+    println("Counter after assignment:", counter)
+    
+    defer println("Defer: Final processing")
+    
+    println("Function end, counter is", counter)
+}
+
+// Test 5: Defer in nested function calls
+func inner_function() {
+    println("Inner function start")
+    
+    defer println("Inner defer: Should execute first")
+    
+    println("Inner function body")
+    println("Inner function end")
+}
+
+func test_defer_nested() {
+    println("=== Test 5: Defer in Nested Calls ===")
+    println("Outer function start")
+    
+    defer println("Outer defer: Should execute last")
+    
+    inner_function()
+    
+    println("Outer function end")
+}
+
+// Test 6: Defer with function calls
+func helper_function() {
+    println("Helper function called from defer")
+}
+
+func test_defer_with_function_calls() {
+    println("=== Test 6: Defer with Function Calls ===")
+    println("Function start")
+    
+    defer println("Defer: Calling helper function")
+    defer helper_function()
+    
+    println("Function body")
+}
+
+// Test 7: Defer with early return
+func test_defer_early_return(int should_return) {
+    println("=== Test 7: Defer with Early Return ===")
+    println("Function start")
+    
+    defer println("Defer: This should always execute")
+    
+    if should_return > 0 {
+        println("Early return condition met")
+        return
+    }
+    
+    println("Normal execution path")
+}
+
+func main() {
+    println("Starting Defer Tests...")
+    println()
+    
+    // Run all tests
+    test_basic_defer()
+    println()
+    
+    var result1 = test_defer_with_return()
+    println("Function returned:", result1)
+    println()
+    
+    var result2 = test_multiple_defers_with_return()
+    println("Function returned:", result2)
+    println()
+    
+    test_defer_simple()
+    println()
+    
+    test_defer_nested()
+    println()
+    
+    test_defer_with_function_calls()
+    println()
+    
+    test_defer_early_return(1)
+    println()
+    
+    test_defer_early_return(0)
+    println()
+    
+    println("All defer tests completed!")
+}
