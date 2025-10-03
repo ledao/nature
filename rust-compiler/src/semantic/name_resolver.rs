@@ -552,10 +552,16 @@ impl NameResolver {
             Type::Generic(name) => {
                 // Check if it's a generic type parameter
                 if !self.context.generic_params.contains(name) {
-                    return Err(CompilerError::semantic(
-                        0, 0, // TODO: Get actual location
-                        format!("Undefined generic type parameter '{}'", name),
-                    ));
+                    // Check if it's a defined struct type or type alias
+                    let is_struct = symbol_table.lookup_struct(name).is_some();
+                    let is_type = symbol_table.lookup_type(name).is_some();
+                    
+                    if !is_struct && !is_type {
+                        return Err(CompilerError::semantic(
+                            0, 0, // TODO: Get actual location
+                            format!("Undefined generic type parameter '{}'", name),
+                        ));
+                    }
                 }
             }
             Type::Array(array_type) => {
@@ -571,8 +577,11 @@ impl NameResolver {
                 }
             }
             Type::Struct(struct_type) => {
-                // Check if struct type exists
-                if symbol_table.lookup_struct(&struct_type.name).is_none() {
+                // Check if struct type exists (either as struct symbol or type symbol)
+                let struct_exists = symbol_table.lookup_struct(&struct_type.name).is_some() ||
+                                  symbol_table.lookup_type(&struct_type.name).is_some();
+                
+                if !struct_exists {
                     return Err(CompilerError::semantic(
                         0, 0, // TODO: Get actual location
                         format!("Undefined struct type '{}'", struct_type.name),

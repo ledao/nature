@@ -1,6 +1,7 @@
 //! Declaration parser for Nature language
 
 use crate::ast::decl::*;
+use crate::ast::types::*;
 use crate::error::{CompilerError, Result};
 use crate::lexer::token::Token;
 use super::{Parser, parse_expression, parse_type};
@@ -29,10 +30,6 @@ pub fn parse_declaration(parser: &mut Parser) -> Result<Option<Declaration>> {
                 let decl = parse_type_declaration(parser)?;
                 Ok(Some(Declaration::Type(decl)))
             }
-            Token::Struct => {
-                let decl = parse_struct_declaration(parser)?;
-                Ok(Some(Declaration::Struct(decl)))
-            }
             Token::Interface => {
                 let decl = parse_interface_declaration(parser)?;
                 Ok(Some(Declaration::Interface(decl)))
@@ -50,6 +47,20 @@ pub fn parse_declaration(parser: &mut Parser) -> Result<Option<Declaration>> {
 /// Parse function declaration
 pub fn parse_function_declaration(parser: &mut Parser) -> Result<crate::ast::FunctionDecl> {
     parser.expect(&Token::Fn)?;
+    
+    // Check if this is a Go-style method (has receiver)
+    if parser.check(&Token::LeftParen) {
+        // This is a Go-style method, parse it as a method declaration
+        if let Some(method) = parse_method_declaration(parser)? {
+            return Ok(method);
+        } else {
+            return Err(CompilerError::syntax(
+                parser.current_location().line,
+                parser.current_location().column,
+                "Failed to parse method declaration",
+            ));
+        }
+    }
     
     if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
         let func_name = name.clone();
@@ -268,7 +279,7 @@ pub fn parse_constant_declaration(parser: &mut Parser) -> Result<ConstantDecl> {
     }
 }
 
-/// Parse type declaration
+/// Parse type declaration (Go-style: type StructName struct { ... })
 pub fn parse_type_declaration(parser: &mut Parser) -> Result<TypeDecl> {
     parser.expect(&Token::Type)?;
     
@@ -276,24 +287,44 @@ pub fn parse_type_declaration(parser: &mut Parser) -> Result<TypeDecl> {
         let type_name = name.clone();
         parser.advance()?;
         
-        parser.expect(&Token::Assign)?;
-        
-        let type_def = parse_type(parser)?;
-        if type_def.is_none() {
-            return Err(CompilerError::syntax(
-                parser.current_location().line,
-                parser.current_location().column,
-                "Expected type definition after '='",
-            ));
+        // Check if this is a Go-style struct declaration: type StructName struct { ... }
+        if parser.consume(&Token::Struct)? {
+            // Parse Go-style struct
+            let struct_decl = parse_go_style_struct(parser, type_name)?;
+            
+            // Convert struct declaration to type declaration
+            let struct_name = struct_decl.name.clone();
+            let struct_location = struct_decl.location;
+            Ok(TypeDecl {
+                name: struct_name.clone(),
+                type_def: Type::Struct(StructType {
+                    name: struct_name,
+                    type_args: vec![],
+                    location: struct_location,
+                }),
+                location: struct_location,
+            })
+        } else {
+            // Original type alias syntax: type Name = Type
+            parser.expect(&Token::Assign)?;
+            
+            let type_def = parse_type(parser)?;
+            if type_def.is_none() {
+                return Err(CompilerError::syntax(
+                    parser.current_location().line,
+                    parser.current_location().column,
+                    "Expected type definition after '='",
+                ));
+            }
+            
+            parser.expect(&Token::Semicolon)?;
+            
+            Ok(TypeDecl {
+                name: type_name,
+                type_def: type_def.unwrap(),
+                location: parser.current_location(),
+            })
         }
-        
-        parser.expect(&Token::Semicolon)?;
-        
-        Ok(TypeDecl {
-            name: type_name,
-            type_def: type_def.unwrap(),
-            location: parser.current_location(),
-        })
     } else {
         Err(CompilerError::syntax(
             parser.current_location().line,
@@ -301,6 +332,121 @@ pub fn parse_type_declaration(parser: &mut Parser) -> Result<TypeDecl> {
             "Expected type name after 'type'",
         ))
     }
+}
+
+/// Parse Go-style struct declaration (struct { ... })
+fn parse_go_style_struct(parser: &mut Parser, struct_name: String) -> Result<StructDecl> {
+    // Parse generic type parameters
+    let generics = if parser.consume(&Token::Less)? {
+        let mut generics = Vec::new();
+        
+        if !parser.check(&Token::Greater) {
+            loop {
+                if let Some(Token::Identifier(generic_name)) = parser.peek().map(|t| &t.token) {
+                    let name = generic_name.clone();
+                    parser.advance()?;
+                    
+                    // Parse constraints
+                    let constraints = if parser.consume(&Token::Colon)? {
+                        let mut constraints = Vec::new();
+                        
+                        loop {
+                            if let Some(constraint) = parse_type(parser)? {
+                                constraints.push(constraint);
+                            }
+                            
+                            if !parser.consume(&Token::Plus)? {
+                                break;
+                            }
+                        }
+                        
+                        constraints
+                    } else {
+                        vec![]
+                    };
+                    
+                    generics.push(GenericParam {
+                        name,
+                        constraints,
+                        location: parser.current_location(),
+                    });
+                }
+                
+                if !parser.consume(&Token::Comma)? {
+                    break;
+                }
+            }
+        }
+        
+        parser.expect(&Token::Greater)?;
+        generics
+    } else {
+        vec![]
+    };
+    
+    parser.expect(&Token::LeftBrace)?;
+    
+    // Parse fields (Go-style: no comma separators)
+    let mut fields = Vec::new();
+    
+    while !parser.check(&Token::RightBrace) {
+        if let Some(Token::Identifier(field_name)) = parser.peek().map(|t| &t.token) {
+            let name = field_name.clone();
+            parser.advance()?;
+            
+            // Go-style: field name followed by type (no colon)
+            let field_type = parse_type(parser)?;
+            if field_type.is_none() {
+                return Err(CompilerError::syntax(
+                    parser.current_location().line,
+                    parser.current_location().column,
+                    "Expected field type",
+                ));
+            }
+            
+            // Parse field tags (Go-style: `field_name type `tag``)
+            let field_tag = if parser.consume(&Token::Backtick)? {
+                if let Some(Token::String(tag)) = parser.peek().map(|t| &t.token) {
+                    let tag = tag.clone();
+                    parser.advance()?;
+                    parser.expect(&Token::Backtick)?;
+                    Some(tag)
+                } else {
+                    return Err(CompilerError::syntax(
+                        parser.current_location().line,
+                        parser.current_location().column,
+                        "Expected field tag string",
+                    ));
+                }
+            } else {
+                None
+            };
+            
+            fields.push(crate::ast::StructField {
+                name,
+                field_type: field_type.unwrap(),
+                default_value: None, // Go doesn't support default values in struct fields
+                field_tag,
+                location: parser.current_location(),
+            });
+        } else {
+            // Skip unknown tokens
+            parser.advance()?;
+        }
+    }
+    
+    parser.expect(&Token::RightBrace)?;
+    
+    // Don't parse methods here - let them be parsed as independent function declarations
+    let methods = Vec::new();
+    
+    Ok(StructDecl {
+        name: struct_name,
+        generics,
+        fields,
+        methods,
+        location: parser.current_location(),
+    })
 }
 
 /// Parse struct declaration
@@ -361,15 +507,15 @@ pub fn parse_struct_declaration(parser: &mut Parser) -> Result<StructDecl> {
         
         parser.expect(&Token::LeftBrace)?;
         
-        // Parse fields
+        // Parse fields (Go-style: no comma separators)
         let mut fields = Vec::new();
         
         while !parser.check(&Token::RightBrace) {
             if let Some(Token::Identifier(field_name)) = parser.peek().map(|t| &t.token) {
                 let name = field_name.clone();
                 parser.advance()?;
-                parser.expect(&Token::Colon)?;
                 
+                // Go-style: field name followed by type (no colon)
                 let field_type = parse_type(parser)?;
                 if field_type.is_none() {
                     return Err(CompilerError::syntax(
@@ -379,9 +525,20 @@ pub fn parse_struct_declaration(parser: &mut Parser) -> Result<StructDecl> {
                     ));
                 }
                 
-                // Parse default value
-                let default_value = if parser.consume(&Token::Assign)? {
-                    parse_expression(parser)?
+                // Parse field tags (Go-style: `field_name type `tag``)
+                let field_tag = if parser.consume(&Token::Backtick)? {
+                    if let Some(Token::String(tag)) = parser.peek().map(|t| &t.token) {
+                        let tag = tag.clone();
+                        parser.advance()?;
+                        parser.expect(&Token::Backtick)?;
+                        Some(tag)
+                    } else {
+                        return Err(CompilerError::syntax(
+                            parser.current_location().line,
+                            parser.current_location().column,
+                            "Expected field tag string",
+                        ));
+                    }
                 } else {
                     None
                 };
@@ -389,24 +546,40 @@ pub fn parse_struct_declaration(parser: &mut Parser) -> Result<StructDecl> {
                 fields.push(crate::ast::StructField {
                     name,
                     field_type: field_type.unwrap(),
-                    default_value,
+                    default_value: None, // Go doesn't support default values in struct fields
+                    field_tag,
                     location: parser.current_location(),
                 });
-            }
-            
-            if !parser.consume(&Token::Comma)? {
-                break;
+            } else {
+                // Skip unknown tokens
+                parser.advance()?;
             }
         }
         
         parser.expect(&Token::RightBrace)?;
         
-        // Parse methods
+        // Parse methods (only if they have receivers)
         let mut methods = Vec::new();
         
-        while parser.consume(&Token::Fn)? {
-            if let Some(method) = parse_method_declaration(parser)? {
-                methods.push(method);
+        // Check if the next token is 'fn' and if it's followed by a receiver
+        while parser.check(&Token::Fn) {
+            // Peek ahead to see if this is a method (has receiver) or a regular function
+            let current_pos = parser.current.clone();
+            parser.advance()?; // consume 'fn'
+            
+            if parser.check(&Token::LeftParen) {
+                // This looks like a method with receiver, try to parse it
+                if let Some(method) = parse_method_declaration(parser)? {
+                    methods.push(method);
+                } else {
+                    // If parsing failed, it might be a regular function, restore position and break
+                    parser.current = current_pos;
+                    break;
+                }
+            } else {
+                // This is a regular function, restore position and break
+                parser.current = current_pos;
+                break;
             }
         }
         
@@ -623,74 +796,109 @@ fn parse_module_path(parser: &mut Parser) -> Result<String> {
     Ok(path_parts.join("."))
 }
 
-/// Parse method declaration
+/// Parse method declaration (Go-style: func (receiver Type) methodName() returnType)
 fn parse_method_declaration(parser: &mut Parser) -> Result<Option<FunctionDecl>> {
-    if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
-        let method_name = name.clone();
+    // Parse receiver (Go-style: (receiver Type))
+    parser.expect(&Token::LeftParen)?;
+    
+    let _receiver_name = if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+        let name = name.clone();
         parser.advance()?;
-        
-        // Parse parameters
-        parser.expect(&Token::LeftParen)?;
-        let mut parameters = Vec::new();
-        
-        if !parser.check(&Token::RightParen) {
-            loop {
-                if let Some(Token::Identifier(param_name)) = parser.peek().map(|t| &t.token) {
-                    let name = param_name.clone();
-                    parser.advance()?;
-                    parser.expect(&Token::Colon)?;
-                    
-                    let param_type = parse_type(parser)?;
-                    if param_type.is_none() {
-                        return Err(CompilerError::syntax(
-                            parser.current_location().line,
-                            parser.current_location().column,
-                            "Expected parameter type",
-                        ));
-                    }
-                    
-                    parameters.push(crate::ast::types::Parameter {
-                        name,
-                        param_type: param_type.unwrap(),
-                        default_value: None,
-                        location: parser.current_location(),
-                    });
+        name
+    } else {
+        return Err(CompilerError::syntax(
+            parser.current_location().line,
+            parser.current_location().column,
+            "Expected receiver name",
+        ));
+    };
+    
+    let receiver_type = parse_type(parser)?;
+    if receiver_type.is_none() {
+        return Err(CompilerError::syntax(
+            parser.current_location().line,
+            parser.current_location().column,
+            "Expected receiver type",
+        ));
+    }
+    
+    parser.expect(&Token::RightParen)?;
+    
+    // Parse method name
+    let method_name = if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+        let name = name.clone();
+        parser.advance()?;
+        name
+    } else {
+        return Err(CompilerError::syntax(
+            parser.current_location().line,
+            parser.current_location().column,
+            "Expected method name",
+        ));
+    };
+    
+    // Add receiver as the first parameter
+    let mut parameters = vec![crate::ast::types::Parameter {
+        name: _receiver_name,
+        param_type: receiver_type.unwrap(),
+        default_value: None,
+        location: parser.current_location(),
+    }];
+    
+    // Parse method parameters
+    parser.expect(&Token::LeftParen)?;
+    
+    if !parser.check(&Token::RightParen) {
+        loop {
+            if let Some(Token::Identifier(param_name)) = parser.peek().map(|t| &t.token) {
+                let name = param_name.clone();
+                parser.advance()?;
+                parser.expect(&Token::Colon)?;
+                
+                let param_type = parse_type(parser)?;
+                if param_type.is_none() {
+                    return Err(CompilerError::syntax(
+                        parser.current_location().line,
+                        parser.current_location().column,
+                        "Expected parameter type",
+                    ));
                 }
                 
-                if !parser.consume(&Token::Comma)? {
-                    break;
-                }
+                parameters.push(crate::ast::types::Parameter {
+                    name,
+                    param_type: param_type.unwrap(),
+                    default_value: None,
+                    location: parser.current_location(),
+                });
+            }
+            
+            if !parser.consume(&Token::Comma)? {
+                break;
             }
         }
-        
-        parser.expect(&Token::RightParen)?;
-        
-        // Parse return type
-        let return_type = if parser.consume(&Token::Arrow)? {
-            parse_type(parser)?
-        } else {
-            None
-        };
-        
-        // Parse method body
-        let body = if parser.consume(&Token::LeftBrace)? {
-            Some(parse_block(parser)?)
-        } else {
-            None
-        };
-        
-        Ok(Some(FunctionDecl {
-            name: method_name,
-            generics: vec![],
-            parameters,
-            return_type,
-            body,
-            attributes: vec![],
-            location: parser.current_location(),
-        }))
-    } else {
-        Ok(None)
     }
+    
+    parser.expect(&Token::RightParen)?;
+    
+    // Parse return type (Go-style: no arrow, just the type)
+    let return_type = parse_type(parser)?;
+    
+    // Parse method body
+    let body = if parser.consume(&Token::LeftBrace)? {
+        Some(parse_block(parser)?)
+    } else {
+        None
+    };
+    
+    Ok(Some(FunctionDecl {
+        name: method_name,
+        generics: vec![],
+        parameters,
+        return_type,
+        body,
+        attributes: vec![],
+        location: parser.current_location(),
+    }))
 }
 
 /// Parse interface method

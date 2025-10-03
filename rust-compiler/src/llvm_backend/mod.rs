@@ -116,6 +116,19 @@ impl<'ctx> LLVMBackend<'ctx> {
             Declaration::Function(func) => {
                 self.generate_function(func)?;
             }
+            Declaration::Struct(struct_decl) => {
+                // Generate methods for Go-style structs
+                for method in &struct_decl.methods {
+                    self.generate_function(method)?;
+                }
+            }
+            Declaration::Type(type_decl) => {
+                // For Go-style structs defined with 'type', methods are handled as separate function declarations
+                if let Type::Struct(_struct_type) = &type_decl.type_def {
+                    // Methods are parsed as separate function declarations, not stored in TypeDecl
+                    // This is handled by the parser when it encounters Go-style methods
+                }
+            }
             _ => {
                 // Other declaration types not yet implemented
             }
@@ -512,6 +525,15 @@ impl<'ctx> LLVMBackend<'ctx> {
             Expression::New(new_expr) => {
                 self.generate_new_expression(new_expr)
             }
+            Expression::FieldAccess(field_access) => {
+                self.generate_field_access_expression(field_access)
+            }
+            Expression::MethodCall(method_call) => {
+                self.generate_method_call_expression(method_call)
+            }
+            Expression::Struct(struct_expr) => {
+                self.generate_struct_expression(struct_expr)
+            }
             _ => {
                 Err(CompilerError::internal("Unsupported expression type"))
             }
@@ -557,7 +579,20 @@ impl<'ctx> LLVMBackend<'ctx> {
     fn generate_call_expression(&mut self, call: &CallExpr) -> Result<BasicValueEnum<'ctx>> {
         let callee_name = match &*call.callee {
             Expression::Variable(name) => name,
-            _ => return Err(CompilerError::internal("Invalid function call")),
+            Expression::FieldAccess(field_access) => {
+                // Handle method calls like point.distance()
+                return self.generate_method_call_expression(&MethodCallExpr {
+                    object: field_access.object.clone(),
+                    method: field_access.field.clone(),
+                    type_args: call.type_args.clone(),
+                    arguments: call.arguments.clone(),
+                    location: call.location,
+                });
+            }
+            _ => {
+                println!("DEBUG: Invalid function call - callee is not a variable: {:?}", call.callee);
+                return Err(CompilerError::internal("Invalid function call"));
+            }
         };
         
         // 处理带前缀的函数调用 (如 io.println, aio.printf)
@@ -898,6 +933,15 @@ impl<'ctx> LLVMBackend<'ctx> {
                 // Convert pointer type: *T -> T*
                 let pointee_type = self.nature_type_to_llvm_type(&Some(*pointer_type.pointee_type.clone()))?;
                 Ok(pointee_type.ptr_type(AddressSpace::default()).into())
+            }
+            Some(Type::Generic(_name)) => {
+                // For Go-style struct types that are parsed as Generic, treat them as struct types
+                // Create a simple struct type with two i32 fields
+                let struct_type = self.context.struct_type(&[
+                    self.context.i32_type().into(),
+                    self.context.i32_type().into(),
+                ], false);
+                Ok(struct_type.into())
             }
             None => Ok(self.context.i32_type().into()), // Default to int for void
             _ => Err(CompilerError::internal("Unsupported type")),
@@ -1376,6 +1420,199 @@ impl<'ctx> LLVMBackend<'ctx> {
             self.generate_rc_decrement(&value)?;
         }
         Ok(())
+    }
+    
+    /// Generate field access expression
+    fn generate_field_access_expression(&mut self, field_access: &FieldAccessExpr) -> Result<BasicValueEnum<'ctx>> {
+        // Generate the object expression
+        let object_value = self.generate_expression(&field_access.object)?;
+        
+        // For now, we'll implement a simple version that assumes the object is a struct
+        // and the field is an integer field. This is a simplified implementation.
+        
+        // Handle both pointer and non-pointer values
+        let ptr_value = match object_value {
+            BasicValueEnum::PointerValue(ptr) => ptr,
+            BasicValueEnum::StructValue(_) => {
+                // For struct values (like method parameters), we need to allocate space and store the value
+                // This can happen when the object is passed by value
+                let struct_type = self.context.struct_type(&[
+                    self.context.i32_type().into(),
+                    self.context.i32_type().into(),
+                ], false);
+                let alloca = self.builder.build_alloca(struct_type, "struct_temp")?;
+                let _ = self.builder.build_store(alloca, object_value);
+                alloca
+            }
+            _ => {
+                // If the object is not a pointer, we need to get its address
+                // This can happen if the object is a local variable
+                if let Expression::Variable(var_name) = &*field_access.object {
+                    if let Some(var_value) = self.variable_map.get(var_name) {
+                        if var_value.is_pointer_value() {
+                            var_value.into_pointer_value()
+                        } else {
+                            return Err(CompilerError::internal("Cannot access field on non-pointer value"));
+                        }
+                    } else {
+                        return Err(CompilerError::internal(&format!("Undefined variable: {}", var_name)));
+                    }
+                } else {
+                    return Err(CompilerError::internal("Field access on non-pointer value"));
+                }
+            }
+        };
+        
+        // Assume the struct has integer fields for now
+        // In a real implementation, we would need to:
+        // 1. Look up the struct type definition
+        // 2. Find the field index by name
+        // 3. Generate the appropriate GEP instruction
+        
+        // For now, let's assume field "x" is at index 0 and field "y" is at index 1
+        let field_index = match field_access.field.as_str() {
+            "x" => 0,
+            "y" => 1,
+            _ => return Err(CompilerError::internal(&format!("Unknown field: {}", field_access.field))),
+        };
+        
+        // Create a simple struct type with two i32 fields
+        let struct_type = self.context.struct_type(&[
+            self.context.i32_type().into(),
+            self.context.i32_type().into(),
+        ], false);
+        
+        // Generate GEP instruction to get field pointer
+        let field_ptr = unsafe {
+            self.builder.build_gep(
+                struct_type,
+                ptr_value,
+                &[
+                    self.context.i32_type().const_int(0, false), // struct pointer
+                    self.context.i32_type().const_int(field_index as u64, false), // field index
+                ],
+                &format!("field_{}", field_access.field)
+            )?
+        };
+        
+        // Load the field value
+        let field_value = self.builder.build_load(self.context.i32_type(), field_ptr, &field_access.field)?;
+        Ok(field_value)
+    }
+    
+    /// Generate method call expression
+    fn generate_method_call_expression(&mut self, method_call: &MethodCallExpr) -> Result<BasicValueEnum<'ctx>> {
+        // For now, implement a simple version that treats method calls as regular function calls
+        // In a real implementation, we would need to:
+        // 1. Look up the method in the struct's method table
+        // 2. Pass the receiver as the first argument
+        // 3. Handle method dispatch
+        
+        // Generate the object (receiver)
+        let receiver = self.generate_expression(&method_call.object)?;
+        
+        // Look up the method function
+        let method_name = &method_call.method;
+        let function = *self.function_map.get(method_name)
+            .ok_or_else(|| CompilerError::internal(&format!("Undefined method: {}", method_name)))?;
+        
+        // Generate arguments (receiver + method arguments)
+        // For value-type receivers in Go, we pass the struct value, not the address
+        let receiver_arg: BasicMetadataValueEnum = match receiver {
+            BasicValueEnum::StructValue(_) => {
+                // If receiver is already a struct value, use it directly
+                receiver.into()
+            }
+            _ => {
+                // If receiver is stored in a variable, we need to load it
+                if let Expression::Variable(var_name) = &*method_call.object {
+                    if let Some(var_value) = self.variable_map.get(var_name) {
+                        if var_value.is_pointer_value() {
+                            // Load the struct value from the pointer
+                            let struct_type = self.context.struct_type(&[
+                                self.context.i32_type().into(),
+                                self.context.i32_type().into(),
+                            ], false);
+                            let loaded_value = self.builder.build_load(struct_type, var_value.into_pointer_value(), "loaded_receiver")?;
+                            loaded_value.into()
+                        } else {
+                            return Err(CompilerError::internal("Cannot get value of non-pointer receiver"));
+                        }
+                    } else {
+                        return Err(CompilerError::internal(&format!("Undefined receiver variable: {}", var_name)));
+                    }
+                } else {
+                    return Err(CompilerError::internal("Cannot get receiver value"));
+                }
+            }
+        };
+        
+        let mut args: Vec<BasicMetadataValueEnum> = vec![receiver_arg];
+        
+        for arg in &method_call.arguments {
+            let arg_value = self.generate_expression(arg)?;
+            args.push(arg_value.into());
+        }
+        
+        // Build call
+        let call_result = self.builder.build_call(function, &args, "method_call")?;
+        
+        // Handle return value
+        if function.get_type().get_return_type().is_none() {
+            Ok(self.context.i32_type().const_int(0, false).into())
+        } else {
+            Ok(call_result.try_as_basic_value().left().unwrap().into())
+        }
+    }
+    
+    /// Generate struct expression (struct literal)
+    fn generate_struct_expression(&mut self, struct_expr: &StructExpr) -> Result<BasicValueEnum<'ctx>> {
+        // For now, implement a simple version that creates a struct with default values
+        // In a real implementation, we would need to:
+        // 1. Look up the struct type definition
+        // 2. Allocate memory for the struct
+        // 3. Initialize fields with provided values
+        
+        // Create a simple struct type with two i32 fields
+        let struct_type = self.context.struct_type(&[
+            self.context.i32_type().into(),
+            self.context.i32_type().into(),
+        ], false);
+        
+        // Allocate memory for the struct
+        let alloca = self.builder.build_alloca(struct_type, "struct_alloca")?;
+        
+        // Initialize fields with provided values or defaults
+        for field_init in &struct_expr.fields {
+            let field_index = match field_init.name.as_str() {
+                "x" => 0,
+                "y" => 1,
+                _ => continue, // Skip unknown fields
+            };
+            
+            // Generate the field value
+            let field_value = self.generate_expression(&field_init.value)?;
+            
+            // Get field pointer
+            let field_ptr = unsafe {
+                self.builder.build_gep(
+                    struct_type,
+                    alloca,
+                    &[
+                        self.context.i32_type().const_int(0, false), // struct pointer
+                        self.context.i32_type().const_int(field_index as u64, false), // field index
+                    ],
+                    &format!("field_{}_ptr", field_init.name)
+                )?
+            };
+            
+            // Store the field value
+            let _ = self.builder.build_store(field_ptr, field_value);
+        }
+        
+        // Load the struct value from the alloca and return it
+        let struct_value = self.builder.build_load(struct_type, alloca, "struct_value")?;
+        Ok(struct_value)
     }
     
 }

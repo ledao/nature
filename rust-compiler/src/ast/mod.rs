@@ -44,8 +44,10 @@ pub struct StructField {
     pub name: String,
     /// Field type
     pub field_type: Type,
-    /// Default value (if any)
+    /// Default value (if any) - not used in Go-style syntax
     pub default_value: Option<Expression>,
+    /// Field tag (Go-style: `field_name type `tag``)
+    pub field_tag: Option<String>,
     /// Location in source
     pub location: Location,
 }

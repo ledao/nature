@@ -316,6 +316,9 @@ pub enum Token {
     /// Question mark
     #[token("?")]
     Question,
+    /// Backtick (for Go-style field tags)
+    #[token("`")]
+    Backtick,
 
     // Special tokens
     /// Underscore

@@ -1,0 +1,23 @@
+// Simple Go-style struct test
+
+from fmt import println
+
+// Basic struct definition (Go-style: type StructName struct { ... })
+type Point struct {
+    x int
+    y int
+}
+
+// Go-style method
+func (p Point) distance() int {
+    return p.x * p.x + p.y * p.y
+}
+
+// Go-style struct literal
+func main() {
+    var point = Point{x: 10, y: 20}
+    println("Point x:", point.x, "y:", point.y)
+    
+    var dist = point.distance()
+    println("Distance:", dist)
+}

@@ -1,6 +1,7 @@
 //! Expression parser for Nature language
 
 use crate::ast::expr::*;
+use crate::ast::types::*;
 use crate::error::{CompilerError, Result};
 use crate::lexer::token::Token;
 use super::Parser;
@@ -477,12 +478,36 @@ fn parse_primary(parser: &mut Parser) -> Result<Option<Expression>> {
                 let name = name.clone();
                 parser.advance()?;
                 
-                // Check if this is a dotted identifier (e.g., io.println)
+                // Check if this is a dotted identifier (e.g., io.println) or field access
                 let mut full_name = name;
+                let mut is_field_access = false;
+                
                 while parser.consume(&Token::Dot)? {
                     if let Some(Token::Identifier(part)) = parser.peek().map(|t| &t.token) {
-                        full_name = format!("{}.{}", full_name, part);
-                        parser.advance()?;
+                        // Check if this is a field access (object.field) or dotted identifier (module.function)
+                        // For now, we'll treat it as field access if the first part is a simple identifier
+                        if !is_field_access && !full_name.contains('.') {
+                            is_field_access = true;
+                        }
+                        
+                        if is_field_access {
+                            // This is field access, create FieldAccess expression
+                            let field_name = part.clone();
+                            parser.advance()?;
+                            
+                            // Create field access expression
+                            let field_access = Expression::FieldAccess(FieldAccessExpr {
+                                object: Box::new(Expression::Variable(full_name)),
+                                field: field_name,
+                                location: parser.current_location(),
+                            });
+                            
+                            return Ok(Some(field_access));
+                        } else {
+                            // This is dotted identifier (e.g., io.println)
+                            full_name = format!("{}.{}", full_name, part);
+                            parser.advance()?;
+                        }
                     } else {
                         return Err(CompilerError::syntax(
                             parser.current_location().line,
@@ -492,7 +517,51 @@ fn parse_primary(parser: &mut Parser) -> Result<Option<Expression>> {
                     }
                 }
                 
-                Ok(Some(Expression::Variable(full_name)))
+                // Check if this is a Go-style struct literal (TypeName{...})
+                if parser.consume(&Token::LeftBrace)? {
+                    // Parse struct literal fields
+                    let mut fields = Vec::new();
+                    
+                    if !parser.check(&Token::RightBrace) {
+                        loop {
+                            if let Some(Token::Identifier(field_name)) = parser.peek().map(|t| &t.token) {
+                                let name = field_name.clone();
+                                parser.advance()?;
+                                parser.expect(&Token::Colon)?;
+                                
+                                let value = parse_expression(parser)?;
+                                if let Some(value) = value {
+                                    fields.push(FieldInit {
+                                        name,
+                                        value,
+                                        location: parser.current_location(),
+                                    });
+                                }
+                            }
+                            
+                            if !parser.consume(&Token::Comma)? {
+                                break;
+                            }
+                        }
+                    }
+                    
+                    parser.expect(&Token::RightBrace)?;
+                    
+                    // Create struct type from identifier
+                    let struct_type = Type::Struct(StructType {
+                        name: full_name,
+                        type_args: vec![],
+                        location: parser.current_location(),
+                    });
+                    
+                    Ok(Some(Expression::Struct(StructExpr {
+                        struct_type,
+                        fields,
+                        location: parser.current_location(),
+                    })))
+                } else {
+                    Ok(Some(Expression::Variable(full_name)))
+                }
             }
             
             // Parenthesized expressions
