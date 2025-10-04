@@ -87,6 +87,12 @@ impl SemanticAnalyzer {
                     // Resolve the import and add imported symbols to symbol table
                     self.resolve_and_add_import(import)?;
                 }
+                Declaration::Impl(impl_) => {
+                    // Add methods from impl block to symbol table
+                    for method in &impl_.methods {
+                        self.symbol_table.insert_function(method)?;
+                    }
+                }
             }
         }
         Ok(())
@@ -131,7 +137,7 @@ impl SemanticAnalyzer {
 
     /// Perform semantic checks
     fn perform_semantic_checks(&mut self, program: &Program) -> Result<()> {
-        self.semantic_checker.check_program(program, &self.symbol_table)?;
+        self.semantic_checker.check_program(program, &mut self.symbol_table)?;
         Ok(())
     }
 

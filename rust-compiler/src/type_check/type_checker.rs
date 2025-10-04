@@ -45,6 +45,7 @@ impl TypeChecker {
             Declaration::Struct(struct_) => self.check_struct(struct_)?,
             Declaration::Interface(interface) => self.check_interface(interface)?,
             Declaration::Import(import) => self.check_import(import)?,
+            Declaration::Impl(impl_) => self.check_impl(impl_)?,
         }
         Ok(())
     }
@@ -88,6 +89,15 @@ impl TypeChecker {
     /// Check types in an import
     fn check_import(&mut self, _import: &ImportDecl) -> Result<()> {
         // TODO: Implement import type checking
+        Ok(())
+    }
+    
+    fn check_impl(&mut self, impl_: &ImplDecl) -> Result<()> {
+        // Check types for each method in the impl block
+        for method in &impl_.methods {
+            self.check_function(method)?;
+        }
+        
         Ok(())
     }
 }

@@ -61,6 +61,9 @@ impl TypeInference {
             Declaration::Import(import) => {
                 self.infer_import(import)?;
             }
+            Declaration::Impl(impl_) => {
+                self.infer_impl(impl_)?;
+            }
         }
         Ok(())
     }
@@ -737,5 +740,17 @@ mod tests {
         
         let inferred_type = inference.infer_expression(&binary, &mut env).unwrap();
         assert_eq!(inferred_type, Type::Basic(crate::ast::types::BasicType::Int));
+    }
+}
+
+impl TypeInference {
+    /// Infer types in an implementation declaration
+    fn infer_impl(&mut self, impl_: &ImplDecl) -> Result<()> {
+        // Infer types for each method in the impl block
+        for method in &impl_.methods {
+            self.infer_function(method)?;
+        }
+        
+        Ok(())
     }
 }

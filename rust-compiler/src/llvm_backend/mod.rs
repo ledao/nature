@@ -129,6 +129,20 @@ impl<'ctx> LLVMBackend<'ctx> {
                     // This is handled by the parser when it encounters Go-style methods
                 }
             }
+            Declaration::Impl(impl_decl) => {
+                // Generate methods for Rust-style impl blocks
+                for method in &impl_decl.methods {
+                    // Generate the actual function
+                    self.generate_function(method)?;
+                    
+                    // Add the method to function_map with a special name
+                    let method_name = format!("{}.{}", impl_decl.type_name, method.name);
+                    // The function should now be in function_map with the original name
+                    if let Some(function_value) = self.function_map.get(&method.name) {
+                        self.function_map.insert(method_name, *function_value);
+                    }
+                }
+            }
             _ => {
                 // Other declaration types not yet implemented
             }
@@ -421,6 +435,7 @@ impl<'ctx> LLVMBackend<'ctx> {
         if let Some(ref init_expr) = var_decl.initializer {
             let value = self.generate_expression(init_expr)?;
             
+            
             // 检查是否是引用计数的指针类型
             if self.is_reference_counted_pointer(&value) {
                 // 增加引用计数
@@ -638,6 +653,59 @@ impl<'ctx> LLVMBackend<'ctx> {
         }
     }
     
+    /// Generate method call with a specific method name
+    fn generate_method_call_with_name(&mut self, method_call: &MethodCallExpr, method_name: &str) -> Result<BasicValueEnum<'ctx>> {
+        // Generate the object (receiver)
+        let receiver = self.generate_expression(&method_call.object)?;
+        
+        // Look up the method function
+        let function = *self.function_map.get(method_name)
+            .ok_or_else(|| CompilerError::internal(&format!("Undefined method: {}", method_name)))?;
+        
+        // Generate arguments (receiver + method arguments)
+        let receiver_arg: BasicMetadataValueEnum = match receiver {
+            BasicValueEnum::StructValue(_) => {
+                receiver.into()
+            }
+            _ => {
+                if let Expression::Variable(var_name) = &*method_call.object {
+                    if let Some(var_value) = self.variable_map.get(var_name) {
+                        if var_value.is_pointer_value() {
+                            let struct_type = self.context.struct_type(&[
+                                self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // string field
+                            ], false);
+                            let loaded_value = self.builder.build_load(struct_type, var_value.into_pointer_value(), "loaded_receiver")?;
+                            loaded_value.into()
+                        } else {
+                            return Err(CompilerError::internal("Cannot get value of non-pointer receiver"));
+                        }
+                    } else {
+                        return Err(CompilerError::internal(&format!("Undefined receiver variable: {}", var_name)));
+                    }
+                } else {
+                    return Err(CompilerError::internal("Cannot get receiver value"));
+                }
+            }
+        };
+        
+        let mut args: Vec<BasicMetadataValueEnum> = vec![receiver_arg];
+        
+        for arg in &method_call.arguments {
+            let arg_value = self.generate_expression(arg)?;
+            args.push(arg_value.into());
+        }
+        
+        // Build the call
+        let result = self.builder.build_call(function, &args, "method_call")?;
+        
+        // Handle return value
+        if function.get_type().get_return_type().is_some() {
+            Ok(result.try_as_basic_value().left().unwrap().into())
+        } else {
+            Ok(self.context.i32_type().const_int(0, false).into())
+        }
+    }
+    
     /// Generate print/println call
     fn generate_print_call(&mut self, func_name: &str, arguments: &[Expression]) -> Result<BasicValueEnum<'ctx>> {
         let printf_func = self.module.get_function("printf")
@@ -650,9 +718,9 @@ impl<'ctx> LLVMBackend<'ctx> {
             let value = self.generate_expression(arg)?;
             match value {
                 BasicValueEnum::PointerValue(ptr) => {
-                    // 检查是否是字符串字面量
-                    if self.is_string_literal(arg) {
-                        // 字符串字面量，使用 %s 格式符
+                    // 检查是否是字符串字面量或字符串字段访问
+                    if self.is_string_literal(arg) || self.is_string_field_access(arg) {
+                        // 字符串字面量或字符串字段，使用 %s 格式符
                         let format_str = self.builder.build_global_string_ptr("%s", "format_str")?;
                         let _ = self.builder.build_call(printf_func, &[format_str.as_pointer_value().into(), ptr.into()], "printf_str_call");
                     } else {
@@ -943,6 +1011,13 @@ impl<'ctx> LLVMBackend<'ctx> {
                 ], false);
                 Ok(struct_type.into())
             }
+            Some(Type::Struct(_struct_type)) => {
+                // For struct types, create a simple struct type with string field
+                let struct_type = self.context.struct_type(&[
+                    self.context.i8_type().ptr_type(AddressSpace::default()).into(), // string field
+                ], false);
+                Ok(struct_type.into())
+            }
             None => Ok(self.context.i32_type().into()), // Default to int for void
             _ => Err(CompilerError::internal("Unsupported type")),
         }
@@ -1223,6 +1298,16 @@ impl<'ctx> LLVMBackend<'ctx> {
         matches!(expr, Expression::Literal(crate::ast::expr::Literal::String(_)))
     }
     
+    fn is_string_field_access(&self, expr: &Expression) -> bool {
+        match expr {
+            Expression::FieldAccess(field_access) => {
+                // Check if this is accessing a string field (like self.name)
+                field_access.field == "name"
+            }
+            _ => false,
+        }
+    }
+    
     /// Execute all deferred statements in LIFO order
     fn execute_defer_statements(&mut self) -> Result<()> {
         // 按照LIFO顺序执行defer语句（后进先出）
@@ -1427,6 +1512,7 @@ impl<'ctx> LLVMBackend<'ctx> {
         // Generate the object expression
         let object_value = self.generate_expression(&field_access.object)?;
         
+        
         // For now, we'll implement a simple version that assumes the object is a struct
         // and the field is an integer field. This is a simplified implementation.
         
@@ -1437,8 +1523,7 @@ impl<'ctx> LLVMBackend<'ctx> {
                 // For struct values (like method parameters), we need to allocate space and store the value
                 // This can happen when the object is passed by value
                 let struct_type = self.context.struct_type(&[
-                    self.context.i32_type().into(),
-                    self.context.i32_type().into(),
+                    self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // string field
                 ], false);
                 let alloca = self.builder.build_alloca(struct_type, "struct_temp")?;
                 let _ = self.builder.build_store(alloca, object_value);
@@ -1469,17 +1554,17 @@ impl<'ctx> LLVMBackend<'ctx> {
         // 2. Find the field index by name
         // 3. Generate the appropriate GEP instruction
         
-        // For now, let's assume field "x" is at index 0 and field "y" is at index 1
+        // For now, let's assume field "x" is at index 0, field "y" is at index 1, and "name" is at index 0
         let field_index = match field_access.field.as_str() {
             "x" => 0,
             "y" => 1,
+            "name" => 0, // name field is at index 0
             _ => return Err(CompilerError::internal(&format!("Unknown field: {}", field_access.field))),
         };
         
-        // Create a simple struct type with two i32 fields
+        // Create a simple struct type with string field
         let struct_type = self.context.struct_type(&[
-            self.context.i32_type().into(),
-            self.context.i32_type().into(),
+            self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // string field
         ], false);
         
         // Generate GEP instruction to get field pointer
@@ -1496,8 +1581,15 @@ impl<'ctx> LLVMBackend<'ctx> {
         };
         
         // Load the field value
-        let field_value = self.builder.build_load(self.context.i32_type(), field_ptr, &field_access.field)?;
-        Ok(field_value)
+        if field_access.field == "name" {
+            let field_type = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+            let field_value = self.builder.build_load(field_type, field_ptr, &field_access.field)?;
+            Ok(field_value)
+        } else {
+            let field_type = self.context.i32_type();
+            let field_value = self.builder.build_load(field_type, field_ptr, &field_access.field)?;
+            Ok(field_value)
+        }
     }
     
     /// Generate method call expression
@@ -1513,8 +1605,23 @@ impl<'ctx> LLVMBackend<'ctx> {
         
         // Look up the method function
         let method_name = &method_call.method;
-        let function = *self.function_map.get(method_name)
-            .ok_or_else(|| CompilerError::internal(&format!("Undefined method: {}", method_name)))?;
+        
+        // First try to find the method in impl blocks (format: "TypeName.methodName")
+        // Try common struct types
+        let possible_types = ["Person", "Point", "String", "Int"];
+        for type_name in &possible_types {
+            let method_name_with_type = format!("{}.{}", type_name, method_name);
+            if self.function_map.contains_key(&method_name_with_type) {
+                return Ok(self.generate_method_call_with_name(method_call, &method_name_with_type)?);
+            }
+        }
+        
+        // If not found in impl blocks, try regular function
+        let function = if let Some(func) = self.function_map.get(method_name) {
+            *func
+        } else {
+            return Err(CompilerError::internal(&format!("Undefined method: {}", method_name)));
+        };
         
         // Generate arguments (receiver + method arguments)
         // For value-type receivers in Go, we pass the struct value, not the address
@@ -1573,10 +1680,9 @@ impl<'ctx> LLVMBackend<'ctx> {
         // 2. Allocate memory for the struct
         // 3. Initialize fields with provided values
         
-        // Create a simple struct type with two i32 fields
+        // Create a simple struct type with string field
         let struct_type = self.context.struct_type(&[
-            self.context.i32_type().into(),
-            self.context.i32_type().into(),
+            self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // string field
         ], false);
         
         // Allocate memory for the struct
@@ -1585,6 +1691,7 @@ impl<'ctx> LLVMBackend<'ctx> {
         // Initialize fields with provided values or defaults
         for field_init in &struct_expr.fields {
             let field_index = match field_init.name.as_str() {
+                "name" => 0,
                 "x" => 0,
                 "y" => 1,
                 _ => continue, // Skip unknown fields

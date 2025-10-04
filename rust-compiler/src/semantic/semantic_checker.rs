@@ -43,7 +43,7 @@ impl SemanticChecker {
     }
 
     /// Check a program for semantic correctness
-    pub fn check_program(&mut self, program: &Program, symbol_table: &SymbolTable) -> Result<()> {
+    pub fn check_program(&mut self, program: &Program, symbol_table: &mut SymbolTable) -> Result<()> {
         for declaration in &program.declarations {
             self.check_declaration(declaration, symbol_table)?;
         }
@@ -51,7 +51,7 @@ impl SemanticChecker {
     }
 
     /// Check a declaration
-    fn check_declaration(&mut self, declaration: &Declaration, symbol_table: &SymbolTable) -> Result<()> {
+    fn check_declaration(&mut self, declaration: &Declaration, symbol_table: &mut SymbolTable) -> Result<()> {
         match declaration {
             Declaration::Function(func) => {
                 self.check_function(func, symbol_table)?;
@@ -74,12 +74,15 @@ impl SemanticChecker {
             Declaration::Import(import) => {
                 self.check_import(import, symbol_table)?;
             }
+            Declaration::Impl(impl_) => {
+                self.check_impl(impl_, symbol_table)?;
+            }
         }
         Ok(())
     }
 
     /// Check a function declaration
-    fn check_function(&mut self, func: &FunctionDecl, symbol_table: &SymbolTable) -> Result<()> {
+    fn check_function(&mut self, func: &FunctionDecl, symbol_table: &mut SymbolTable) -> Result<()> {
         // Set current function context
         let old_function = self.context.current_function.clone();
         let old_return_type = self.context.current_return_type.clone();
@@ -87,15 +90,32 @@ impl SemanticChecker {
         self.context.current_function = Some(func.name.clone());
         self.context.current_return_type = func.return_type.clone();
 
-        // Check function parameters
+        // Enter a new scope for function parameters and body
+        symbol_table.enter_scope();
+
+        // Check function parameters and add them to symbol table
         for param in &func.parameters {
             self.check_parameter(param, symbol_table)?;
+            // Add parameter to symbol table for use in function body
+            let var_decl = VariableDecl {
+                name: param.name.clone(),
+                var_type: Some(param.param_type.clone()),
+                initializer: None,
+                mutable: false,
+                location: param.location,
+            };
+            symbol_table.insert_variable(&var_decl)?;
         }
 
         // Check function body
         if let Some(body) = &func.body {
-            self.check_block(body, symbol_table)?;
+            for stmt in &body.statements {
+                self.check_statement(stmt, symbol_table)?;
+            }
         }
+
+        // Exit the function scope
+        symbol_table.exit_scope();
 
         // Restore context
         self.context.current_function = old_function;
@@ -140,7 +160,7 @@ impl SemanticChecker {
     }
 
     /// Check a struct declaration
-    fn check_struct(&mut self, struct_: &StructDecl, symbol_table: &SymbolTable) -> Result<()> {
+    fn check_struct(&mut self, struct_: &StructDecl, symbol_table: &mut SymbolTable) -> Result<()> {
         // Set current struct context
         let old_struct = self.context.current_struct.clone();
         self.context.current_struct = Some(struct_.name.clone());
@@ -804,4 +824,29 @@ mod tests {
         let result = checker.check_return_statement(&return_stmt, &symbol_table);
         assert!(result.is_err());
     }
+}
+
+impl SemanticChecker {
+    /// Check an implementation declaration
+    fn check_impl(&mut self, impl_: &ImplDecl, symbol_table: &mut SymbolTable) -> Result<()> {
+        // Check that the type being implemented exists
+        let type_exists = symbol_table.lookup_struct(&impl_.type_name).is_some() ||
+                         symbol_table.lookup_type(&impl_.type_name).is_some();
+        
+        if !type_exists {
+            return Err(CompilerError::semantic(
+                impl_.location.line,
+                impl_.location.column,
+                format!("Cannot implement methods for undefined type '{}'", impl_.type_name),
+            ));
+        }
+        
+        // Check each method in the impl block
+        for method in &impl_.methods {
+            self.check_function(method, symbol_table)?;
+        }
+        
+        Ok(())
+    }
+    
 }

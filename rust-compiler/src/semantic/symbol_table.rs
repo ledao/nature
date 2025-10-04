@@ -361,6 +361,10 @@ impl SymbolTable {
                 // Imports are not exported by default
                 false
             }
+            Declaration::Impl(_impl) => {
+                // Impl blocks are not exported by default
+                false
+            }
         }
     }
 

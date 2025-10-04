@@ -95,6 +95,10 @@ impl Parser {
                 let import = decl_parser::parse_import_declaration(self)?;
                 Ok(Some(Declaration::Import(import)))
             }
+            Some(Token::Impl) => {
+                let impl_decl = decl_parser::parse_impl_declaration(self)?;
+                Ok(Some(Declaration::Impl(impl_decl)))
+            }
             _ => Ok(None),
         }
     }

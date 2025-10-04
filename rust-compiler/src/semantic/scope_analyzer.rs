@@ -120,6 +120,9 @@ impl ScopeAnalyzer {
             Declaration::Import(import) => {
                 self.analyze_import(import)?;
             }
+            Declaration::Impl(impl_) => {
+                self.analyze_impl(impl_)?;
+            }
         }
         Ok(())
     }
@@ -634,5 +637,17 @@ mod tests {
         
         let result = analyzer.add_variable("x".to_string(), var_info2);
         assert!(result.is_err());
+    }
+}
+
+impl ScopeAnalyzer {
+    /// Analyze an implementation declaration
+    fn analyze_impl(&mut self, impl_: &ImplDecl) -> Result<()> {
+        // Analyze each method in the impl block
+        for method in &impl_.methods {
+            self.analyze_function(method)?;
+        }
+        
+        Ok(())
     }
 }

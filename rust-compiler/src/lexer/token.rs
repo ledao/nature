@@ -56,6 +56,9 @@ pub enum Token {
     /// Import keyword
     #[token("import")]
     Import,
+    /// Implementation keyword
+    #[token("impl")]
+    Impl,
     /// If keyword
     #[token("if")]
     If,

@@ -3,6 +3,7 @@
 use crate::error::Location;
 use crate::ast::types::Type;
 use crate::ast::expr::Expression;
+use crate::ast::Block;
 use serde::{Deserialize, Serialize};
 
 /// All possible declarations in Nature
@@ -22,6 +23,8 @@ pub enum Declaration {
     Interface(InterfaceDecl),
     /// Import declaration
     Import(ImportDecl),
+    /// Implementation declaration
+    Impl(ImplDecl),
 }
 
 /// Function declaration
@@ -94,6 +97,19 @@ pub struct TypeDecl {
     pub location: Location,
 }
 
+/// Function parameter
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Parameter {
+    /// Parameter name
+    pub name: String,
+    /// Parameter type
+    pub param_type: Type,
+    /// Default value
+    pub default_value: Option<Expression>,
+    /// Location in source
+    pub location: Location,
+}
+
 /// Struct declaration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StructDecl {
@@ -149,6 +165,19 @@ pub struct ImportDecl {
     pub location: Location,
 }
 
+/// Implementation declaration (Rust-style: impl Type { ... })
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImplDecl {
+    /// Type name being implemented
+    pub type_name: String,
+    /// Generic type parameters
+    pub generics: Vec<GenericParam>,
+    /// Methods in this implementation
+    pub methods: Vec<FunctionDecl>,
+    /// Location in source
+    pub location: Location,
+}
+
 /// Function or method attribute
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Attribute {
@@ -172,6 +201,7 @@ impl Declaration {
             Declaration::Struct(decl) => decl.location,
             Declaration::Interface(decl) => decl.location,
             Declaration::Import(decl) => decl.location,
+            Declaration::Impl(decl) => decl.location,
         }
     }
 
@@ -185,6 +215,7 @@ impl Declaration {
             Declaration::Struct(decl) => &decl.name,
             Declaration::Interface(decl) => &decl.name,
             Declaration::Import(decl) => &decl.path,
+            Declaration::Impl(decl) => &decl.type_name,
         }
     }
 }

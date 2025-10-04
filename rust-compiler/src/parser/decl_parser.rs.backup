@@ -566,52 +566,41 @@ fn parse_impl_method(parser: &mut Parser, type_name: &str) -> Result<FunctionDec
     parser.expect(&Token::LeftParen)?;
     let mut parameters = Vec::new();
     
-    // Parse parameters (including self)
+    // Add implicit self parameter
+    parameters.push(Parameter {
+        name: "self".to_string(),
+        param_type: Type::Struct(StructType {
+            name: type_name.to_string(),
+            type_args: vec![],
+            location: parser.current_location(),
+        }),
+        default_value: None,
+        location: parser.current_location(),
+    });
+    
+    // Skip additional parameters for now
     if !parser.consume(&Token::RightParen)? {
+        // Parse additional parameters if any
         loop {
-            // Parse parameter name
-            if let Some(Token::Identifier(param_name)) = parser.peek().map(|t| &t.token) {
-                let name = param_name.clone();
-                parser.advance()?;
-                
-                // Check if this is a self parameter without explicit type
-                if name == "self" && !parser.check(&Token::Colon) {
-                    // For self parameter without explicit type, use the struct type
-                    parameters.push(crate::ast::types::Parameter {
-                        name,
-                        param_type: Type::Struct(StructType {
-                            name: type_name.to_string(),
-                            type_args: vec![],
-                            location: parser.current_location(),
-                        }),
-                        default_value: None,
-                        location: parser.current_location(),
-                    });
-                } else {
-                    // Parse parameter type (required for non-self parameters)
-                    let param_type = if parser.consume(&Token::Colon)? {
-                        parse_type(parser)?.unwrap_or(Type::Basic(crate::ast::types::BasicType::String))
-                    } else {
-                        return Err(CompilerError::syntax(
-                            parser.current_location().line,
-                            parser.current_location().column,
-                            "Expected parameter type after parameter name",
-                        ));
-                    };
-                    
-                    parameters.push(crate::ast::types::Parameter {
-                        name,
-                        param_type,
-                        default_value: None,
-                        location: parser.current_location(),
-                    });
-                }
-            } else {
-                // Skip unknown tokens
-                parser.advance()?;
+            if parser.consume(&Token::RightParen)? {
+                break;
             }
             
-            // Check for comma (more parameters) or closing paren (end of parameters)
+            // Skip parameter parsing for now
+            if let Some(token) = parser.peek() {
+                match &token.token {
+                    Token::Identifier(_) => {
+                        parser.advance()?;
+                        if parser.consume(&Token::Colon)? {
+                            parse_type(parser)?;
+                        }
+                    }
+                    _ => {
+                        parser.advance()?;
+                    }
+                }
+            }
+            
             if !parser.consume(&Token::Comma)? {
                 parser.expect(&Token::RightParen)?;
                 break;
@@ -623,7 +612,7 @@ fn parse_impl_method(parser: &mut Parser, type_name: &str) -> Result<FunctionDec
     let return_type = if parser.consume(&Token::Arrow)? {
         parse_type(parser)?
     } else {
-        None
+        Type::Basic(crate::ast::types::BasicType::String)
     };
     
     // Parse body
@@ -1213,8 +1202,203 @@ fn parse_block(parser: &mut Parser) -> Result<crate::ast::Block> {
     })
 }
 
+/// Parse an implementation declaration
+pub fn parse_impl_declaration(parser: &mut Parser) -> Result<ImplDecl> {
+    parser.expect(&Token::Impl)?;
+    
+    // Parse type name
+    let type_name = if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+        let name = name.clone();
+        parser.advance()?;
+        name
+    } else {
+        return Err(CompilerError::syntax(
+            parser.current_location().line,
+            parser.current_location().column,
+            "Expected type name after 'impl'",
+        ));
+    };
+    
+    // Parse optional generic parameters
+    let generics = if parser.consume(&Token::Less)? {
+        let mut params = Vec::new();
+        loop {
+            if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+                let param_name = name.clone();
+                parser.advance()?;
+                
+                let constraints = if parser.consume(&Token::Colon)? {
+                    let mut constraint_list = Vec::new();
+                    loop {
+                        if let Some(Token::Identifier(constraint)) = parser.peek().map(|t| &t.token) {
+                            constraint_list.push(Type::Basic(crate::ast::types::BasicType::String));
+                            parser.advance()?;
+                            
+                            if !parser.consume(&Token::Plus)? {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    constraint_list
+                } else {
+                    Vec::new()
+                };
+                
+                params.push(GenericParam {
+                    name: param_name,
+                    constraints,
+                    location: parser.current_location(),
+                });
+                
+                if !parser.consume(&Token::Comma)? {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        
+        parser.expect(&Token::Greater)?;
+        params
+    } else {
+        Vec::new()
+    };
+    
+    // Parse opening brace
+    parser.expect(&Token::LeftBrace)?;
+    
+    // Parse methods
+    let mut methods = Vec::new();
+    while !parser.consume(&Token::RightBrace)? {
+        if parser.is_at_end() {
+            return Err(CompilerError::syntax(
+                parser.current_location().line,
+                parser.current_location().column,
+                "Expected '}' to close impl block",
+            ));
+        }
+        
+        let method = parse_impl_method(parser, &type_name)?;
+        methods.push(method);
+    }
+    
+    Ok(ImplDecl {
+        type_name,
+        generics,
+        methods,
+        location: parser.current_location(),
+    })
+}
+
+/// Parse a method within an impl block
+fn parse_impl_method(parser: &mut Parser, type_name: &str) -> Result<FunctionDecl> {
+    parser.expect(&Token::Fn)?;
+    
+    // Parse method name
+    let method_name = if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+        let name = name.clone();
+        parser.advance()?;
+        name
+    } else {
+        return Err(CompilerError::syntax(
+            parser.current_location().line,
+            parser.current_location().column,
+            "Expected method name after 'fn'",
+        ));
+    };
+    
+    // Parse parameters
+    parser.expect(&Token::LeftParen)?;
+    let mut parameters = Vec::new();
+    
+    // Add implicit self parameter
+    parameters.push(Parameter {
+        name: "self".to_string(),
+        param_type: Type::Struct(StructType {
+            name: type_name.to_string(),
+            type_args: vec![],
+            location: parser.current_location(),
+        }),
+        default_value: None,
+        location: parser.current_location(),
+    });
+    
+    // Skip additional parameters for now
+    if !parser.consume(&Token::RightParen)? {
+        // Parse additional parameters if any
+        loop {
+            if parser.consume(&Token::RightParen)? {
+                break;
+            }
+            
+            // Skip parameter parsing for now
+            if let Some(token) = parser.peek() {
+                match &token.token {
+                    Token::Identifier(_) => {
+                        parser.advance()?;
+                        if parser.consume(&Token::Colon)? {
+                            parse_type(parser)?;
+                        }
+                    }
+                    _ => {
+                        parser.advance()?;
+                    }
+                }
+            }
+            
+            if !parser.consume(&Token::Comma)? {
+                parser.expect(&Token::RightParen)?;
+                break;
+            }
+        }
+    }
+    
+    // Parse return type
+    let return_type = if parser.consume(&Token::Arrow)? {
+        parse_type(parser)?
+    } else {
+        Type::Basic(crate::ast::types::BasicType::String)
+    };
+    
+    // Parse body
+    let body = if parser.consume(&Token::LeftBrace)? {
+        let mut statements = Vec::new();
+        while !parser.consume(&Token::RightBrace)? {
+            if parser.is_at_end() {
+                return Err(CompilerError::syntax(
+                    parser.current_location().line,
+                    parser.current_location().column,
+                    "Expected '}' to close function body",
+                ));
+            }
+            
+            if let Some(stmt) = parse_statement(parser)? {
+                statements.push(stmt);
+            }
+        }
+        Some(Block {
+            statements,
+            location: parser.current_location(),
+        })
+    } else {
+        None
+    };
+    
+    Ok(FunctionDecl {
+        name: method_name,
+        generics: vec![],
+        parameters,
+        return_type,
+        body,
+        attributes: vec![],
+        location: parser.current_location(),
+    })
+}
+
 /// Parse attributes
-fn parse_attributes(parser: &mut Parser) -> Result<Vec<crate::ast::decl::Attribute>> {
+fn parse_attributes(parser: &mut Parser) -> Result<Vec<Attribute>> {
     let mut attributes = Vec::new();
     
     while parser.consume(&Token::At)? {
@@ -1222,13 +1406,13 @@ fn parse_attributes(parser: &mut Parser) -> Result<Vec<crate::ast::decl::Attribu
             let name = attr_name.clone();
             parser.advance()?;
             
-            let mut arguments = Vec::new();
-            
-            if parser.consume(&Token::LeftParen)? {
+            let arguments = if parser.consume(&Token::LeftParen)? {
+                let mut args = Vec::new();
+                
                 if !parser.check(&Token::RightParen) {
                     loop {
                         if let Some(arg) = parse_expression(parser)? {
-                            arguments.push(arg);
+                            args.push(arg);
                         }
                         
                         if !parser.consume(&Token::Comma)? {
@@ -1236,10 +1420,14 @@ fn parse_attributes(parser: &mut Parser) -> Result<Vec<crate::ast::decl::Attribu
                         }
                     }
                 }
+                
                 parser.expect(&Token::RightParen)?;
-            }
+                args
+            } else {
+                vec![]
+            };
             
-            attributes.push(crate::ast::decl::Attribute {
+            attributes.push(Attribute {
                 name,
                 arguments,
                 location: parser.current_location(),
@@ -1248,5 +1436,651 @@ fn parse_attributes(parser: &mut Parser) -> Result<Vec<crate::ast::decl::Attribu
     }
     
     Ok(attributes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_function_declaration() {
+        let source = "fn add(int a, int b): int { return a + b; }".to_string();
+        let mut parser = Parser::new(source, None);
+        parser.advance().unwrap();
+        
+        let decl = parse_function_declaration(&mut parser).unwrap();
+        assert_eq!(decl.name, "add");
+        assert_eq!(decl.parameters.len(), 2);
+        assert!(decl.return_type.is_some());
+    }
+
+    #[test]
+    fn test_parse_struct_declaration() {
+        let source = "struct Point { x: int, y: int }".to_string();
+        let mut parser = Parser::new(source, None);
+        parser.advance().unwrap();
+        
+        let decl = parse_struct_declaration(&mut parser).unwrap();
+        assert_eq!(decl.name, "Point");
+        assert_eq!(decl.fields.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_interface_declaration() {
+        let source = "interface Shape { area() -> f64; }".to_string();
+        let mut parser = Parser::new(source, None);
+        parser.advance().unwrap();
+        
+        let decl = parse_interface_declaration(&mut parser).unwrap();
+        assert_eq!(decl.name, "Shape");
+        assert_eq!(decl.methods.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_import_declaration() {
+        // Test: from fmt import printf, println
+        let source = "from fmt import printf, println".to_string();
+        let mut parser = Parser::new(source, None);
+        parser.advance().unwrap();
+        
+        let decl = parse_import_declaration(&mut parser).unwrap();
+        assert_eq!(decl.path, "fmt");
+        assert!(decl.items.is_some());
+        let items = decl.items.unwrap();
+        assert_eq!(items.len(), 2);
+        assert!(items.contains(&"printf".to_string()));
+        assert!(items.contains(&"println".to_string()));
+    }
+    
+    #[test]
+    fn test_parse_import_with_alias() {
+        // Test: import std.fmt as io
+        let source = "import std.fmt as io".to_string();
+        let mut parser = Parser::new(source, None);
+        parser.advance().unwrap();
+        
+        let decl = parse_import_declaration(&mut parser).unwrap();
+        assert_eq!(decl.path, "std.fmt");
+        assert!(decl.items.is_none());
+        assert_eq!(decl.alias, Some("io".to_string()));
+    }
+    
+    #[test]
+    fn test_parse_simple_import() {
+        // Test: import std.fmt
+        let source = "import std.fmt".to_string();
+        let mut parser = Parser::new(source, None);
+        parser.advance().unwrap();
+        
+        let decl = parse_import_declaration(&mut parser).unwrap();
+        assert_eq!(decl.path, "std.fmt");
+        assert!(decl.items.is_none());
+        assert!(decl.alias.is_none());
+    }
+}
+
+/// Parse implementation declaration (Rust-style: impl Type { ... })
+pub fn parse_impl_declaration(parser: &mut Parser) -> Result<ImplDecl> {
+    parser.expect(&Token::Impl)?;
+    
+    // Parse type name
+    let type_name = if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+        let name = name.clone();
+        parser.advance()?;
+        name
+    } else {
+        return Err(CompilerError::syntax(
+            parser.current_location().line,
+            parser.current_location().column,
+            "Expected type name after 'impl'",
+        ));
+    };
+    
+    // Parse generic type parameters (optional)
+    let generics = if parser.consume(&Token::Less)? {
+        let mut generics = Vec::new();
+        
+        if !parser.check(&Token::Greater) {
+            loop {
+                if let Some(Token::Identifier(generic_name)) = parser.peek().map(|t| &t.token) {
+                    let name = generic_name.clone();
+                    parser.advance()?;
+                    
+                    // Parse constraints
+                    let constraints = if parser.consume(&Token::Colon)? {
+                        let mut constraints = Vec::new();
+                        
+                        loop {
+                            if let Some(constraint) = parse_type(parser)? {
+                                constraints.push(constraint);
+                            }
+                            
+                            if !parser.consume(&Token::Plus)? {
+                                break;
+                            }
+                        }
+                        
+                        constraints
+                    } else {
+                        vec![]
+                    };
+                    
+                    generics.push(GenericParam {
+                        name,
+                        constraints,
+                        location: parser.current_location(),
+                    });
+                }
+                
+                if !parser.consume(&Token::Comma)? {
+                    break;
+                }
+            }
+        }
+        
+        parser.expect(&Token::Greater)?;
+        generics
+    } else {
+        vec![]
+    };
+    
+    // Parse opening brace
+    parser.expect(&Token::LeftBrace)?;
+    
+    // Parse methods
+    let mut methods = Vec::new();
+    
+    while !parser.check(&Token::RightBrace) {
+        if parser.check(&Token::Fn) {
+            // Parse method in impl block (add implicit self parameter)
+            let method = parse_impl_method(parser, &type_name)?;
+            methods.push(method);
+        } else {
+            // Skip unknown tokens
+            parser.advance()?;
+        }
+    }
+    
+    parser.expect(&Token::RightBrace)?;
+    
+    Ok(ImplDecl {
+        type_name,
+        generics,
+        methods,
+        location: parser.current_location(),
+    })
+}
+
+/// Parse an implementation declaration
+pub fn parse_impl_declaration(parser: &mut Parser) -> Result<ImplDecl> {
+    parser.expect(&Token::Impl)?;
+    
+    // Parse type name
+    let type_name = if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+        let name = name.clone();
+        parser.advance()?;
+        name
+    } else {
+        return Err(CompilerError::syntax(
+            parser.current_location().line,
+            parser.current_location().column,
+            "Expected type name after 'impl'",
+        ));
+    };
+    
+    // Parse optional generic parameters
+    let generics = if parser.consume(&Token::Less)? {
+        let mut params = Vec::new();
+        loop {
+            if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+                let param_name = name.clone();
+                parser.advance()?;
+                
+                let constraints = if parser.consume(&Token::Colon)? {
+                    let mut constraint_list = Vec::new();
+                    loop {
+                        if let Some(Token::Identifier(constraint)) = parser.peek().map(|t| &t.token) {
+                            constraint_list.push(Type::Basic(crate::ast::types::BasicType::String));
+                            parser.advance()?;
+                            
+                            if !parser.consume(&Token::Plus)? {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    constraint_list
+                } else {
+                    Vec::new()
+                };
+                
+                params.push(GenericParam {
+                    name: param_name,
+                    constraints,
+                    location: parser.current_location(),
+                });
+                
+                if !parser.consume(&Token::Comma)? {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        
+        parser.expect(&Token::Greater)?;
+        params
+    } else {
+        Vec::new()
+    };
+    
+    // Parse opening brace
+    parser.expect(&Token::LeftBrace)?;
+    
+    // Parse methods
+    let mut methods = Vec::new();
+    while !parser.consume(&Token::RightBrace)? {
+        if parser.is_at_end() {
+            return Err(CompilerError::syntax(
+                parser.current_location().line,
+                parser.current_location().column,
+                "Expected '}' to close impl block",
+            ));
+        }
+        
+        let method = parse_impl_method(parser, &type_name)?;
+        methods.push(method);
+    }
+    
+    Ok(ImplDecl {
+        type_name,
+        generics,
+        methods,
+        location: parser.current_location(),
+    })
+}
+
+/// Parse a method within an impl block
+fn parse_impl_method(parser: &mut Parser, type_name: &str) -> Result<FunctionDecl> {
+    parser.expect(&Token::Fn)?;
+    
+    // Parse method name
+    let method_name = if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+        let name = name.clone();
+        parser.advance()?;
+        name
+    } else {
+        return Err(CompilerError::syntax(
+            parser.current_location().line,
+            parser.current_location().column,
+            "Expected method name after 'fn'",
+        ));
+    };
+    
+    // Parse parameters
+    parser.expect(&Token::LeftParen)?;
+    let mut parameters = Vec::new();
+    
+    // Add implicit self parameter
+    parameters.push(Parameter {
+        name: "self".to_string(),
+        param_type: Type::Struct(StructType {
+            name: type_name.to_string(),
+            type_args: vec![],
+            location: parser.current_location(),
+        }),
+        default_value: None,
+        location: parser.current_location(),
+    });
+    
+    // Skip additional parameters for now
+    if !parser.consume(&Token::RightParen)? {
+        // Parse additional parameters if any
+        loop {
+            if parser.consume(&Token::RightParen)? {
+                break;
+            }
+            
+            // Skip parameter parsing for now
+            if let Some(token) = parser.peek() {
+                match &token.token {
+                    Token::Identifier(_) => {
+                        parser.advance()?;
+                        if parser.consume(&Token::Colon)? {
+                            parse_type(parser)?;
+                        }
+                    }
+                    _ => {
+                        parser.advance()?;
+                    }
+                }
+            }
+            
+            if !parser.consume(&Token::Comma)? {
+                parser.expect(&Token::RightParen)?;
+                break;
+            }
+        }
+    }
+    
+    // Parse return type
+    let return_type = if parser.consume(&Token::Arrow)? {
+        parse_type(parser)?
+    } else {
+        Type::Basic(crate::ast::types::BasicType::String)
+    };
+    
+    // Parse body
+    let body = if parser.consume(&Token::LeftBrace)? {
+        let mut statements = Vec::new();
+        while !parser.consume(&Token::RightBrace)? {
+            if parser.is_at_end() {
+                return Err(CompilerError::syntax(
+                    parser.current_location().line,
+                    parser.current_location().column,
+                    "Expected '}' to close function body",
+                ));
+            }
+            
+            if let Some(stmt) = parse_statement(parser)? {
+                statements.push(stmt);
+            }
+        }
+        Some(Block {
+            statements,
+            location: parser.current_location(),
+        })
+    } else {
+        None
+    };
+    
+    Ok(FunctionDecl {
+        name: method_name,
+        generics: vec![],
+        parameters,
+        return_type,
+        body,
+        attributes: vec![],
+        location: parser.current_location(),
+    })
+}
+
+/// Parse a method inside an impl block
+fn parse_impl_method(parser: &mut Parser, type_name: &str) -> Result<FunctionDecl> {
+    parser.expect(&Token::Fn)?;
+    
+    // Parse method name
+    let method_name = if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+        let name = name.clone();
+        parser.advance()?;
+        name
+    } else {
+        return Err(CompilerError::syntax(
+            parser.current_location().line,
+            parser.current_location().column,
+            "Expected method name after 'fn'",
+        ));
+    };
+    
+    // Parse parameters (starting with implicit self parameter)
+    parser.expect(&Token::LeftParen)?;
+    
+    let mut parameters = Vec::new();
+    
+    // Add implicit self parameter
+    parameters.push(Parameter {
+        name: "self".to_string(),
+        param_type: Type::Struct(StructType {
+            name: type_name.to_string(),
+            type_args: vec![],
+            location: parser.current_location(),
+        }),
+        default_value: None,
+        location: parser.current_location(),
+    });
+    
+    // Parse additional parameters if any (simplified - just skip for now)
+    if !parser.check(&Token::RightParen) {
+        // Skip additional parameters for now
+        while !parser.check(&Token::RightParen) {
+            parser.advance()?;
+        }
+    }
+    
+    parser.expect(&Token::RightParen)?;
+    
+    // Parse return type (optional)
+    let return_type = if parser.consume(&Token::Arrow)? {
+        parse_type(parser)?
+    } else {
+        None
+    };
+    
+    // Parse function body (optional)
+    let body = if parser.consume(&Token::LeftBrace)? {
+        let mut statements = Vec::new();
+        
+        while !parser.check(&Token::RightBrace) {
+            if let Some(stmt) = parse_statement(parser)? {
+                statements.push(stmt);
+            } else {
+                break;
+            }
+        }
+        
+        parser.expect(&Token::RightBrace)?;
+        Some(Block {
+            statements,
+            location: parser.current_location(),
+        })
+    } else {
+        None
+    };
+    
+    Ok(FunctionDecl {
+        name: method_name,
+        generics: vec![],
+        parameters,
+        return_type,
+        body,
+        attributes: vec![],
+        location: parser.current_location(),
+    })
+}
+
+/// Parse an implementation declaration
+pub fn parse_impl_declaration(parser: &mut Parser) -> Result<ImplDecl> {
+    parser.expect(&Token::Impl)?;
+    
+    // Parse type name
+    let type_name = if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+        let name = name.clone();
+        parser.advance()?;
+        name
+    } else {
+        return Err(CompilerError::syntax(
+            parser.current_location().line,
+            parser.current_location().column,
+            "Expected type name after 'impl'",
+        ));
+    };
+    
+    // Parse optional generic parameters
+    let generics = if parser.consume(&Token::Less)? {
+        let mut params = Vec::new();
+        loop {
+            if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+                let param_name = name.clone();
+                parser.advance()?;
+                
+                let constraints = if parser.consume(&Token::Colon)? {
+                    let mut constraint_list = Vec::new();
+                    loop {
+                        if let Some(Token::Identifier(constraint)) = parser.peek().map(|t| &t.token) {
+                            constraint_list.push(Type::Basic(crate::ast::types::BasicType::String));
+                            parser.advance()?;
+                            
+                            if !parser.consume(&Token::Plus)? {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    constraint_list
+                } else {
+                    Vec::new()
+                };
+                
+                params.push(GenericParam {
+                    name: param_name,
+                    constraints,
+                    location: parser.current_location(),
+                });
+                
+                if !parser.consume(&Token::Comma)? {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        
+        parser.expect(&Token::Greater)?;
+        params
+    } else {
+        Vec::new()
+    };
+    
+    // Parse opening brace
+    parser.expect(&Token::LeftBrace)?;
+    
+    // Parse methods
+    let mut methods = Vec::new();
+    while !parser.consume(&Token::RightBrace)? {
+        if parser.is_at_end() {
+            return Err(CompilerError::syntax(
+                parser.current_location().line,
+                parser.current_location().column,
+                "Expected '}' to close impl block",
+            ));
+        }
+        
+        let method = parse_impl_method(parser, &type_name)?;
+        methods.push(method);
+    }
+    
+    Ok(ImplDecl {
+        type_name,
+        generics,
+        methods,
+        location: parser.current_location(),
+    })
+}
+
+/// Parse a method within an impl block
+fn parse_impl_method(parser: &mut Parser, type_name: &str) -> Result<FunctionDecl> {
+    parser.expect(&Token::Fn)?;
+    
+    // Parse method name
+    let method_name = if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+        let name = name.clone();
+        parser.advance()?;
+        name
+    } else {
+        return Err(CompilerError::syntax(
+            parser.current_location().line,
+            parser.current_location().column,
+            "Expected method name after 'fn'",
+        ));
+    };
+    
+    // Parse parameters
+    parser.expect(&Token::LeftParen)?;
+    let mut parameters = Vec::new();
+    
+    // Add implicit self parameter
+    parameters.push(Parameter {
+        name: "self".to_string(),
+        param_type: Type::Struct(StructType {
+            name: type_name.to_string(),
+            type_args: vec![],
+            location: parser.current_location(),
+        }),
+        default_value: None,
+        location: parser.current_location(),
+    });
+    
+    // Skip additional parameters for now
+    if !parser.consume(&Token::RightParen)? {
+        // Parse additional parameters if any
+        loop {
+            if parser.consume(&Token::RightParen)? {
+                break;
+            }
+            
+            // Skip parameter parsing for now
+            if let Some(token) = parser.peek() {
+                match &token.token {
+                    Token::Identifier(_) => {
+                        parser.advance()?;
+                        if parser.consume(&Token::Colon)? {
+                            parse_type(parser)?;
+                        }
+                    }
+                    _ => {
+                        parser.advance()?;
+                    }
+                }
+            }
+            
+            if !parser.consume(&Token::Comma)? {
+                parser.expect(&Token::RightParen)?;
+                break;
+            }
+        }
+    }
+    
+    // Parse return type
+    let return_type = if parser.consume(&Token::Arrow)? {
+        parse_type(parser)?
+    } else {
+        Type::Basic(crate::ast::types::BasicType::String)
+    };
+    
+    // Parse body
+    let body = if parser.consume(&Token::LeftBrace)? {
+        let mut statements = Vec::new();
+        while !parser.consume(&Token::RightBrace)? {
+            if parser.is_at_end() {
+                return Err(CompilerError::syntax(
+                    parser.current_location().line,
+                    parser.current_location().column,
+                    "Expected '}' to close function body",
+                ));
+            }
+            
+            if let Some(stmt) = parse_statement(parser)? {
+                statements.push(stmt);
+            }
+        }
+        Some(Block {
+            statements,
+            location: parser.current_location(),
+        })
+    } else {
+        None
+    };
+    
+    Ok(FunctionDecl {
+        name: method_name,
+        generics: vec![],
+        parameters,
+        return_type,
+        body,
+        attributes: vec![],
+        location: parser.current_location(),
+    })
 }
 

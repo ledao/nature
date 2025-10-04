@@ -171,6 +171,9 @@ impl TypeCompatibility {
             Declaration::Import(import) => {
                 self.check_import(import)?;
             }
+            Declaration::Impl(impl_) => {
+                self.check_impl(impl_)?;
+            }
         }
         Ok(())
     }
@@ -918,5 +921,17 @@ mod tests {
         
         let result = compatibility.check_compatibility(&int_type, &string_type).unwrap();
         assert!(matches!(result, CompatibilityResult::Incompatible(_)));
+    }
+}
+
+impl TypeCompatibility {
+    /// Check type compatibility in an implementation declaration
+    fn check_impl(&mut self, impl_: &ImplDecl) -> Result<()> {
+        // Check type compatibility for each method in the impl block
+        for method in &impl_.methods {
+            self.check_function(method)?;
+        }
+        
+        Ok(())
     }
 }

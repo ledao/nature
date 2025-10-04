@@ -66,6 +66,9 @@ impl NameResolver {
             Declaration::Import(import) => {
                 self.resolve_import(import, symbol_table)?;
             }
+            Declaration::Impl(impl_) => {
+                self.resolve_impl(impl_, symbol_table)?;
+            }
         }
         Ok(())
     }
@@ -695,5 +698,26 @@ mod tests {
         let generic_type = Type::Generic("T".to_string());
         let result = resolver.resolve_type(&generic_type, &symbol_table);
         assert!(result.is_err());
+    }
+}
+
+impl NameResolver {
+    /// Resolve names in an implementation declaration
+    fn resolve_impl(&mut self, impl_: &ImplDecl, symbol_table: &SymbolTable) -> Result<()> {
+        // Add generic parameters to context
+        let old_generics = self.context.generic_params.clone();
+        for generic in &impl_.generics {
+            self.context.generic_params.push(generic.name.clone());
+        }
+        
+        // Resolve each method in the impl block
+        for method in &impl_.methods {
+            self.resolve_function(method, symbol_table)?;
+        }
+        
+        // Restore generic parameters
+        self.context.generic_params = old_generics;
+        
+        Ok(())
     }
 }
