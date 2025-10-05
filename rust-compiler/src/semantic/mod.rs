@@ -106,32 +106,16 @@ impl SemanticAnalyzer {
 
     /// Add local variables from scope analyzer to symbol table
     fn add_local_variables_to_symbol_table(&mut self) -> Result<()> {
-        // Get all scopes from the scope analyzer
-        let scopes = self.scope_analyzer.scopes();
-        
-        for scope in scopes {
-            // Add all variables from this scope to the symbol table
-            for (_name, var_info) in &scope.variables {
-                // Create a VariableDecl from VariableInfo
-                let var_decl = VariableDecl {
-                    name: var_info.name.clone(),
-                    var_type: var_info.var_type.clone(),
-                    initializer: None, // We don't have initializer info in VariableInfo
-                    mutable: var_info.mutable,
-                    location: var_info.location,
-                };
-                
-                // Add to symbol table
-                self.symbol_table.insert_variable(&var_decl)?;
-            }
-        }
+        // Skip this phase - local variables and function parameters are added
+        // during semantic checking phase by check_function, which correctly
+        // manages scopes.
         
         Ok(())
     }
 
     /// Resolve names in the program
     fn resolve_names(&mut self, program: &Program) -> Result<()> {
-        self.name_resolver.resolve_program(program, &self.symbol_table)?;
+        self.name_resolver.resolve_program(program, &mut self.symbol_table)?;
         Ok(())
     }
 

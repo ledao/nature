@@ -569,35 +569,54 @@ fn parse_impl_method(parser: &mut Parser, type_name: &str) -> Result<FunctionDec
     // Parse parameters (including self)
     if !parser.consume(&Token::RightParen)? {
         loop {
-            // Parse parameter name
+            // Parse parameter name (could be self* or self)
             if let Some(Token::Identifier(param_name)) = parser.peek().map(|t| &t.token) {
                 let name = param_name.clone();
                 parser.advance()?;
                 
                 // Check if this is a self parameter without explicit type
                 if name == "self" && !parser.check(&Token::Colon) {
-                    // For self parameter without explicit type, use the struct type
-                    parameters.push(crate::ast::types::Parameter {
-                        name,
-                        param_type: Type::Struct(StructType {
+                    // Check if this is self* (pointer type)
+                    if parser.check(&Token::Star) {
+                        parser.advance()?; // consume *
+                        
+                        // Create pointer type for self*
+                        let struct_type = Type::Struct(StructType {
                             name: type_name.to_string(),
                             type_args: vec![],
                             location: parser.current_location(),
-                        }),
-                        default_value: None,
-                        location: parser.current_location(),
-                    });
+                        });
+                        
+                        let param_type = Type::Pointer(crate::ast::types::PointerType {
+                            pointee_type: Box::new(struct_type),
+                            mutable: true, // pointers are mutable by default
+                            reference_counted: false,
+                            location: parser.current_location(),
+                        });
+                        
+                        parameters.push(crate::ast::types::Parameter {
+                            name: "self".to_string(),
+                            param_type,
+                            default_value: None,
+                            location: parser.current_location(),
+                        });
+                    } else {
+                        // For self parameter without explicit type, use the struct type (value type)
+                        parameters.push(crate::ast::types::Parameter {
+                            name,
+                            param_type: Type::Struct(StructType {
+                                name: type_name.to_string(),
+                                type_args: vec![],
+                                location: parser.current_location(),
+                            }),
+                            default_value: None,
+                            location: parser.current_location(),
+                        });
+                    }
                 } else {
                     // Parse parameter type (required for non-self parameters)
-                    let param_type = if parser.consume(&Token::Colon)? {
-                        parse_type(parser)?.unwrap_or(Type::Basic(crate::ast::types::BasicType::String))
-                    } else {
-                        return Err(CompilerError::syntax(
-                            parser.current_location().line,
-                            parser.current_location().column,
-                            "Expected parameter type after parameter name",
-                        ));
-                    };
+                    // For Go-style syntax, type comes directly after parameter name (no colon)
+                    let param_type = parse_type(parser)?.unwrap_or(Type::Basic(crate::ast::types::BasicType::String));
                     
                     parameters.push(crate::ast::types::Parameter {
                         name,

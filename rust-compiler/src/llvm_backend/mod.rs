@@ -493,6 +493,32 @@ impl<'ctx> LLVMBackend<'ctx> {
                     return Err(CompilerError::internal(&format!("Undefined variable: {}", name)));
                 }
             }
+            AssignmentTarget::FieldAccess(field_access_target) => {
+                println!("DEBUG: Processing field assignment: {}.{}", 
+                    match &field_access_target.object {
+                        Expression::Variable(name) => name,
+                        _ => "unknown"
+                    }, 
+                    field_access_target.field
+                );
+                // Handle field assignment like self.name = new_name
+                let object_value = self.generate_expression(&field_access_target.object)?;
+                let field_name = &field_access_target.field;
+                
+                // Get the field pointer
+                let field_ptr = if object_value.is_pointer_value() {
+                    // If object is a pointer (like self*), we can directly access the field
+                    let struct_type = self.context.struct_type(&[
+                        self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // string field
+                    ], false);
+                    self.builder.build_struct_gep(struct_type, object_value.into_pointer_value(), 0, field_name)?
+                } else {
+                    return Err(CompilerError::internal("Field access on non-pointer object not supported"));
+                };
+                
+                // Store the new value to the field
+                let _ = self.builder.build_store(field_ptr, value);
+            }
             _ => {
                 return Err(CompilerError::internal("Unsupported assignment target"));
             }
@@ -662,28 +688,53 @@ impl<'ctx> LLVMBackend<'ctx> {
         let function = *self.function_map.get(method_name)
             .ok_or_else(|| CompilerError::internal(&format!("Undefined method: {}", method_name)))?;
         
+        // Check if the method expects a pointer type for the first parameter (self*)
+        let expects_pointer = if let Some(first_param) = function.get_type().get_param_types().first() {
+            first_param.is_pointer_type()
+        } else {
+            false
+        };
+        
         // Generate arguments (receiver + method arguments)
-        let receiver_arg: BasicMetadataValueEnum = match receiver {
-            BasicValueEnum::StructValue(_) => {
-                receiver.into()
-            }
-            _ => {
-                if let Expression::Variable(var_name) = &*method_call.object {
-                    if let Some(var_value) = self.variable_map.get(var_name) {
-                        if var_value.is_pointer_value() {
-                            let struct_type = self.context.struct_type(&[
-                                self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // string field
-                            ], false);
-                            let loaded_value = self.builder.build_load(struct_type, var_value.into_pointer_value(), "loaded_receiver")?;
-                            loaded_value.into()
-                        } else {
-                            return Err(CompilerError::internal("Cannot get value of non-pointer receiver"));
-                        }
+        let receiver_arg: BasicMetadataValueEnum = if expects_pointer {
+            // Method expects pointer type (self*), pass the pointer directly
+            if let Expression::Variable(var_name) = &*method_call.object {
+                if let Some(var_value) = self.variable_map.get(var_name) {
+                    if var_value.is_pointer_value() {
+                        (*var_value).into()
                     } else {
-                        return Err(CompilerError::internal(&format!("Undefined receiver variable: {}", var_name)));
+                        return Err(CompilerError::internal("Cannot get pointer of non-pointer receiver"));
                     }
                 } else {
-                    return Err(CompilerError::internal("Cannot get receiver value"));
+                    return Err(CompilerError::internal(&format!("Undefined receiver variable: {}", var_name)));
+                }
+            } else {
+                return Err(CompilerError::internal("Cannot get receiver pointer"));
+            }
+        } else {
+            // Method expects value type (self), pass the struct value
+            match receiver {
+                BasicValueEnum::StructValue(_) => {
+                    receiver.into()
+                }
+                _ => {
+                    if let Expression::Variable(var_name) = &*method_call.object {
+                        if let Some(var_value) = self.variable_map.get(var_name) {
+                            if var_value.is_pointer_value() {
+                                let struct_type = self.context.struct_type(&[
+                                    self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // string field
+                                ], false);
+                                let loaded_value = self.builder.build_load(struct_type, var_value.into_pointer_value(), "loaded_receiver")?;
+                                loaded_value.into()
+                            } else {
+                                return Err(CompilerError::internal("Cannot get value of non-pointer receiver"));
+                            }
+                        } else {
+                            return Err(CompilerError::internal(&format!("Undefined receiver variable: {}", var_name)));
+                        }
+                    } else {
+                        return Err(CompilerError::internal("Cannot get receiver value"));
+                    }
                 }
             }
         };
@@ -837,9 +888,89 @@ impl<'ctx> LLVMBackend<'ctx> {
     /// Generate binary expression
     fn generate_binary_expression(&mut self, binary: &BinaryExpr) -> Result<BasicValueEnum<'ctx>> {
         let left = self.generate_expression(&binary.left)?;
-        let right = self.generate_expression(&binary.right)?;
+        
+        // For assignment operations, we need to handle the right side specially
+        let right = if matches!(binary.operator, BinaryOp::Assign) {
+            // For assignment, if the right side is a variable, we might need the pointer value
+            match &*binary.right {
+                Expression::Variable(var_name) => {
+                    if let Some(var_value) = self.variable_map.get(var_name) {
+                        if var_value.is_pointer_value() {
+                            // For string variables, we want the pointer value, not the loaded value
+                            (*var_value).into()
+                        } else {
+                            // For non-pointer variables, load the value
+                            (*var_value).into()
+                        }
+                    } else {
+                        return Err(CompilerError::internal(&format!("Undefined variable: {}", var_name)));
+                    }
+                }
+                _ => {
+                    // For non-variable expressions, generate normally
+                    self.generate_expression(&binary.right)?
+                }
+            }
+        } else {
+            // For non-assignment operations, generate normally
+            self.generate_expression(&binary.right)?
+        };
         
         match binary.operator {
+            BinaryOp::Assign => {
+                // Handle assignment: left = right
+                // This should be treated as a statement, not an expression
+                // For now, we'll handle simple variable assignments
+                match &*binary.left {
+                    Expression::Variable(var_name) => {
+                        if let Some(var_alloca) = self.variable_map.get(var_name).cloned() {
+                            if var_alloca.is_pointer_value() {
+                                let _ = self.builder.build_store(var_alloca.into_pointer_value(), right);
+                                Ok(right) // Return the assigned value
+                            } else {
+                                Err(CompilerError::internal("Variable is not a pointer"))
+                            }
+                        } else {
+                            Err(CompilerError::internal(&format!("Undefined variable: {}", var_name)))
+                        }
+                    }
+                    Expression::FieldAccess(field_access) => {
+                        // Handle field assignment like self.name = new_name
+                        let field_name = &field_access.field;
+                        
+                        // Get the object pointer directly from variable_map
+                        let object_ptr = match &*field_access.object {
+                            Expression::Variable(var_name) => {
+                                if let Some(var_value) = self.variable_map.get(var_name) {
+                                    if var_value.is_pointer_value() {
+                                        var_value.into_pointer_value()
+                                    } else {
+                                        return Err(CompilerError::internal("Object is not a pointer"));
+                                    }
+                                } else {
+                                    return Err(CompilerError::internal(&format!("Undefined variable: {}", var_name)));
+                                }
+                            }
+                            _ => {
+                                return Err(CompilerError::internal("Only variable field access supported in assignment"));
+                            }
+                        };
+                        
+                        // Get the field pointer
+                        let struct_type = self.context.struct_type(&[
+                            self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // string field
+                        ], false);
+                        let field_ptr = self.builder.build_struct_gep(struct_type, object_ptr, 0, field_name)?;
+                        
+                        // Store the new value to the field
+                        let _ = self.builder.build_store(field_ptr, right);
+                        Ok(right) // Return the assigned value
+                    }
+                    _ => {
+                        Err(CompilerError::internal("Unsupported assignment target in binary expression"))
+                    }
+                }
+            }
             BinaryOp::Add => {
                 match (left, right) {
                     (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) => {

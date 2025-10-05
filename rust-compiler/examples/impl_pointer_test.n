@@ -1,0 +1,24 @@
+// Impl pointer test
+
+from  fmt import println
+
+type Person struct {
+    name string
+}
+
+impl Person {
+    func greet(self*) {
+        println("Hello, I'm ", self.name)
+    }
+    
+    func set_name(self*, new_name string) {
+        self.name = new_name
+    }
+}
+
+func main() {
+    var person = Person{name: "Alice"}
+    person.greet()
+    person.set_name("Bob")
+    person.greet()
+}
