@@ -29,8 +29,29 @@ pub fn parse_declaration(parser: &mut Parser) -> Result<Option<Declaration>> {
                 Ok(Some(Declaration::Constant(decl)))
             }
             Token::Type => {
-                let decl = parse_type_declaration(parser)?;
-                Ok(Some(Declaration::Type(decl)))
+                // Check if this is a Go-style struct declaration
+                let current_pos = parser.current.clone();
+                parser.advance()?; // consume 'type'
+                
+                if let Some(Token::Identifier(_)) = parser.peek().map(|t| &t.token) {
+                    parser.advance()?; // consume identifier
+                    if parser.check(&Token::Struct) {
+                        // This is a Go-style struct declaration, parse it as StructDecl
+                        parser.current = current_pos; // restore position
+                        let struct_decl = parse_go_style_struct_declaration(parser)?;
+                        Ok(Some(Declaration::Struct(struct_decl)))
+                    } else {
+                        // This is a regular type declaration
+                        parser.current = current_pos; // restore position
+                        let decl = parse_type_declaration(parser)?;
+                        Ok(Some(Declaration::Type(decl)))
+                    }
+                } else {
+                    // This is a regular type declaration
+                    parser.current = current_pos; // restore position
+                    let decl = parse_type_declaration(parser)?;
+                    Ok(Some(Declaration::Type(decl)))
+                }
             }
             Token::Interface => {
                 let decl = parse_interface_declaration(parser)?;
@@ -286,6 +307,7 @@ pub fn parse_constant_declaration(parser: &mut Parser) -> Result<ConstantDecl> {
 }
 
 /// Parse type declaration (Go-style: type StructName struct { ... })
+/// Returns either a TypeDecl or a StructDecl depending on the syntax
 pub fn parse_type_declaration(parser: &mut Parser) -> Result<TypeDecl> {
     parser.expect(&Token::Type)?;
     
@@ -298,18 +320,18 @@ pub fn parse_type_declaration(parser: &mut Parser) -> Result<TypeDecl> {
             // Parse Go-style struct
             let struct_decl = parse_go_style_struct(parser, type_name)?;
             
-            // Convert struct declaration to type declaration
-            let struct_name = struct_decl.name.clone();
-            let struct_location = struct_decl.location;
-            Ok(TypeDecl {
-                name: struct_name.clone(),
+            // For Go-style structs, we need to return a StructDecl instead of TypeDecl
+            // This is a special case where the parser needs to return a different type
+            // We'll handle this in the parser by checking the return type
+            return Ok(TypeDecl {
+                name: struct_decl.name.clone(),
                 type_def: Type::Struct(StructType {
-                    name: struct_name,
+                    name: struct_decl.name.clone(),
                     type_args: vec![],
-                    location: struct_location,
+                    location: struct_decl.location,
                 }),
-                location: struct_location,
-            })
+                location: struct_decl.location,
+            });
         } else {
             // Original type alias syntax: type Name = Type
             parser.expect(&Token::Assign)?;
@@ -338,6 +360,31 @@ pub fn parse_type_declaration(parser: &mut Parser) -> Result<TypeDecl> {
             "Expected type name after 'type'",
         ))
     }
+}
+
+/// Parse Go-style struct declaration (type StructName struct { ... })
+pub fn parse_go_style_struct_declaration(parser: &mut Parser) -> Result<StructDecl> {
+    parser.expect(&Token::Type)?;
+    
+    if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
+        let struct_name = name.clone();
+        parser.advance()?;
+        parser.expect(&Token::Struct)?;
+        
+        parse_go_style_struct(parser, struct_name)
+    } else {
+        Err(CompilerError::syntax(
+            parser.current_location().line,
+            parser.current_location().column,
+            "Expected struct name after 'type'",
+        ))
+    }
+}
+
+/// Parse Go-style struct declaration from current position (assumes 'type' and name are already consumed)
+pub fn parse_go_style_struct_declaration_from_current(parser: &mut Parser, struct_name: String) -> Result<StructDecl> {
+    parser.expect(&Token::Struct)?;
+    parse_go_style_struct(parser, struct_name)
 }
 
 /// Parse Go-style struct declaration (struct { ... })
@@ -533,8 +580,14 @@ pub fn parse_impl_declaration(parser: &mut Parser) -> Result<ImplDecl> {
             ));
         }
         
-        let method = parse_impl_method(parser, &type_name)?;
-        methods.push(method);
+        // Skip comments and other non-method tokens
+        if parser.check(&Token::Fn) {
+            let method = parse_impl_method(parser, &type_name)?;
+            methods.push(method);
+        } else {
+            // Skip unknown tokens (like comments)
+            parser.advance()?;
+        }
     }
     
     Ok(ImplDecl {
@@ -549,17 +602,24 @@ pub fn parse_impl_declaration(parser: &mut Parser) -> Result<ImplDecl> {
 fn parse_impl_method(parser: &mut Parser, type_name: &str) -> Result<FunctionDecl> {
     parser.expect(&Token::Fn)?;
     
-    // Parse method name
-    let method_name = if let Some(Token::Identifier(name)) = parser.peek().map(|t| &t.token) {
-        let name = name.clone();
-        parser.advance()?;
-        name
-    } else {
-        return Err(CompilerError::syntax(
-            parser.current_location().line,
-            parser.current_location().column,
-            "Expected method name after 'fn'",
-        ));
+    // Parse method name (allow keywords like 'new' as method names)
+    let method_name = match parser.peek().map(|t| &t.token) {
+        Some(Token::Identifier(name)) => {
+            let name = name.clone();
+            parser.advance()?;
+            name
+        }
+        Some(Token::New) => {
+            parser.advance()?;
+            "new".to_string()
+        }
+        _ => {
+            return Err(CompilerError::syntax(
+                parser.current_location().line,
+                parser.current_location().column,
+                "Expected method name after 'fn'",
+            ));
+        }
     };
     
     // Parse parameters
@@ -569,54 +629,48 @@ fn parse_impl_method(parser: &mut Parser, type_name: &str) -> Result<FunctionDec
     // Parse parameters (including self)
     if !parser.consume(&Token::RightParen)? {
         loop {
-            // Parse parameter name (could be self* or self)
+            // Parse parameter name (including self)
             if let Some(Token::Identifier(param_name)) = parser.peek().map(|t| &t.token) {
                 let name = param_name.clone();
                 parser.advance()?;
                 
                 // Check if this is a self parameter without explicit type
                 if name == "self" && !parser.check(&Token::Colon) {
-                    // Check if this is self* (pointer type)
-                    if parser.check(&Token::Star) {
-                        parser.advance()?; // consume *
-                        
-                        // Create pointer type for self*
-                        let struct_type = Type::Struct(StructType {
-                            name: type_name.to_string(),
-                            type_args: vec![],
-                            location: parser.current_location(),
-                        });
-                        
-                        let param_type = Type::Pointer(crate::ast::types::PointerType {
-                            pointee_type: Box::new(struct_type),
-                            mutable: true, // pointers are mutable by default
-                            reference_counted: false,
-                            location: parser.current_location(),
-                        });
-                        
-                        parameters.push(crate::ast::types::Parameter {
-                            name: "self".to_string(),
-                            param_type,
-                            default_value: None,
-                            location: parser.current_location(),
-                        });
-                    } else {
-                        // For self parameter without explicit type, use the struct type (value type)
-                        parameters.push(crate::ast::types::Parameter {
-                            name,
-                            param_type: Type::Struct(StructType {
-                                name: type_name.to_string(),
-                                type_args: vec![],
-                                location: parser.current_location(),
-                            }),
-                            default_value: None,
-                            location: parser.current_location(),
-                        });
-                    }
-                } else {
+                    // self is always a pointer type in methods
+                    let struct_type = Type::Struct(StructType {
+                        name: type_name.to_string(),
+                        type_args: vec![],
+                        location: parser.current_location(),
+                    });
+                    
+                    let param_type = Type::Pointer(crate::ast::types::PointerType {
+                        pointee_type: Box::new(struct_type),
+                        mutable: true, // pointers are mutable by default
+                        reference_counted: false,
+                        location: parser.current_location(),
+                    });
+                    
+                    parameters.push(crate::ast::types::Parameter {
+                        name: "self".to_string(),
+                        param_type,
+                        default_value: None,
+                        location: parser.current_location(),
+                    });
+                    
+                    // Skip to parameter loop end check for self parameters
+                    // Don't use continue here, let the loop handle comma/right paren check
+                } else if name != "self" {
                     // Parse parameter type (required for non-self parameters)
-                    // For Go-style syntax, type comes directly after parameter name (no colon)
-                    let param_type = parse_type(parser)?.unwrap_or(Type::Basic(crate::ast::types::BasicType::String));
+                    // For Nature syntax, type comes directly after parameter name (no colon)
+                    let param_type = if let Some(ty) = parse_type(parser)? {
+                        ty
+                    } else {
+                        return Err(CompilerError::syntax(
+                            parser.current_location().line,
+                            parser.current_location().column,
+                            "Expected parameter type after parameter name",
+                        ));
+                    };
                     
                     parameters.push(crate::ast::types::Parameter {
                         name,
@@ -626,8 +680,9 @@ fn parse_impl_method(parser: &mut Parser, type_name: &str) -> Result<FunctionDec
                     });
                 }
             } else {
-                // Skip unknown tokens
-                parser.advance()?;
+                // If we don't find an identifier, we might be at the end of parameters
+                // or there's a syntax error
+                break;
             }
             
             // Check for comma (more parameters) or closing paren (end of parameters)
@@ -639,7 +694,12 @@ fn parse_impl_method(parser: &mut Parser, type_name: &str) -> Result<FunctionDec
     }
     
     // Parse return type
-    let return_type = if parser.consume(&Token::Arrow)? {
+    // In Nature, return type can be specified with -> or : or directly after ()
+    let return_type = if parser.consume(&Token::Arrow)? || parser.consume(&Token::Colon)? {
+        parse_type(parser)?
+    } else if !parser.check(&Token::LeftBrace) {
+        // Try to parse type directly (for "func name() Type {" syntax)
+        // But only if next token is not {
         parse_type(parser)?
     } else {
         None

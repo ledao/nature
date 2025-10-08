@@ -1,0 +1,41 @@
+// Constructor and destructor test
+
+from  fmt import println
+
+type Person struct {
+    name string
+    age int
+}
+
+impl Person {
+    // Regular method
+    func greet(self) {
+        println("Hello, I'm ", self.name, ", and I'm ", self.age, "years old")
+    }
+    
+    // Method to change age
+    func set_age(self, new_age int) {
+        self.age = new_age
+    }
+}
+
+func main() {
+    println("=== Constructor/Destructor Test ===")
+    
+    // Test constructor
+    var person = Person {
+       name: "Alice",
+       age: 25, 
+    }
+    person.greet()
+    
+    // Test method call
+    person.set_age(26)
+    person.greet()
+
+    person.set_age(27)
+    person.greet()
+    
+    println("=== End of main ===")
+    // person should be automatically destroyed here
+}

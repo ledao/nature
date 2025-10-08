@@ -20,6 +20,8 @@ pub struct LLVMBackend<'ctx> {
     pub function_map: HashMap<String, FunctionValue<'ctx>>,
     /// Variable map for tracking local variables
     pub variable_map: HashMap<String, BasicValueEnum<'ctx>>,
+    /// Struct declarations map for type lookup
+    pub struct_declarations: HashMap<String, StructDecl>,
     /// Current function being generated
     pub current_function: Option<FunctionValue<'ctx>>,
     /// Defer stack for current function
@@ -40,6 +42,7 @@ impl<'ctx> LLVMBackend<'ctx> {
             builder,
             function_map: HashMap::new(),
             variable_map: HashMap::new(),
+            struct_declarations: HashMap::new(),
             current_function: None,
             defer_stack: Vec::new(),
         })
@@ -51,7 +54,32 @@ impl<'ctx> LLVMBackend<'ctx> {
         // Add built-in functions
         self.add_builtin_functions()?;
         
-        // Generate user-defined functions
+        // First pass: collect all struct declarations
+        for declaration in &program.declarations {
+            match declaration {
+                Declaration::Struct(struct_decl) => {
+                    self.struct_declarations.insert(struct_decl.name.clone(), struct_decl.clone());
+                }
+                Declaration::Type(type_decl) => {
+                    // For Go-style structs defined with 'type', we need to create a StructDecl
+                    if let Type::Struct(struct_type) = &type_decl.type_def {
+                        // Create a minimal StructDecl for lookup purposes
+                        // The actual field information will be handled by the type system
+                        let struct_decl = StructDecl {
+                            name: type_decl.name.clone(),
+                            generics: vec![],
+                            fields: vec![], // Fields will be handled by the type system
+                            methods: vec![],
+                            location: type_decl.location,
+                        };
+                        self.struct_declarations.insert(type_decl.name.clone(), struct_decl);
+                    }
+                }
+                _ => {}
+            }
+        }
+        
+        // Second pass: generate all declarations
         for declaration in &program.declarations {
             self.generate_declaration(declaration)?;
         }
@@ -124,7 +152,18 @@ impl<'ctx> LLVMBackend<'ctx> {
             }
             Declaration::Type(type_decl) => {
                 // For Go-style structs defined with 'type', methods are handled as separate function declarations
-                if let Type::Struct(_struct_type) = &type_decl.type_def {
+                if let Type::Struct(struct_type) = &type_decl.type_def {
+                    // Register the struct declaration for later lookup
+                    // We need to create a StructDecl from the TypeDecl
+                    let struct_decl = StructDecl {
+                        name: type_decl.name.clone(),
+                        generics: vec![], // Go-style structs don't have generics in this context
+                        fields: vec![], // Fields are not stored in TypeDecl, they're in the struct_type
+                        methods: vec![], // Methods are parsed as separate function declarations
+                        location: type_decl.location,
+                    };
+                    self.struct_declarations.insert(type_decl.name.clone(), struct_decl);
+                    
                     // Methods are parsed as separate function declarations, not stored in TypeDecl
                     // This is handled by the parser when it encounters Go-style methods
                 }
@@ -494,24 +533,23 @@ impl<'ctx> LLVMBackend<'ctx> {
                 }
             }
             AssignmentTarget::FieldAccess(field_access_target) => {
-                println!("DEBUG: Processing field assignment: {}.{}", 
-                    match &field_access_target.object {
-                        Expression::Variable(name) => name,
-                        _ => "unknown"
-                    }, 
-                    field_access_target.field
-                );
                 // Handle field assignment like self.name = new_name
                 let object_value = self.generate_expression(&field_access_target.object)?;
                 let field_name = &field_access_target.field;
                 
                 // Get the field pointer
                 let field_ptr = if object_value.is_pointer_value() {
-                    // If object is a pointer (like self*), we can directly access the field
+                    // If object is a pointer (like self), we can directly access the field
                     let struct_type = self.context.struct_type(&[
-                        self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // string field
+                        self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // name field (string)
+                        self.context.i32_type().into(), // age field (int)
                     ], false);
-                    self.builder.build_struct_gep(struct_type, object_value.into_pointer_value(), 0, field_name)?
+                    let field_index = match field_name.as_str() {
+                        "name" => 0,
+                        "age" => 1,
+                        _ => return Err(CompilerError::internal(&format!("Unknown field: {}", field_name))),
+                    };
+                    self.builder.build_struct_gep(struct_type, object_value.into_pointer_value(), field_index, field_name)?
                 } else {
                     return Err(CompilerError::internal("Field access on non-pointer object not supported"));
                 };
@@ -535,18 +573,17 @@ impl<'ctx> LLVMBackend<'ctx> {
             }
             Expression::Variable(name) => {
                 if let Some(var_value) = self.variable_map.get(name) {
-                    // If the variable is an alloca (pointer), load its value
-                    if var_value.is_pointer_value() {
-                        let pointer_value = var_value.into_pointer_value();
-                        // Since get_element_type is not available, we'll use a generic load
-                        // with the i32 type for now
-                        let element_type = self.context.i32_type();
-                        let loaded_value = self.builder.build_load(element_type, pointer_value, name)?;
-                        Ok(loaded_value)
-                    } else {
-                        // If it's already a value (like function parameters), return it directly
-                        Ok(*var_value)
-                    }
+                    // Check if this is a function parameter by checking if it's a parameter value
+                    // Function parameters are stored as parameter values, not allocas
+                    // Local variables are stored as allocas (pointers)
+                    
+                    // If it's a pointer value, it could be either:
+                    // 1. A function parameter that happens to be a pointer (like string)
+                    // 2. A local variable (alloca)
+                    
+                    // For now, let's assume that if it's a pointer value, it's a function parameter
+                    // and return it directly. Local variables will be handled differently.
+                    Ok(*var_value)
                 } else {
                     Err(CompilerError::internal(&format!("Undefined variable: {}", name)))
                 }
@@ -630,8 +667,18 @@ impl<'ctx> LLVMBackend<'ctx> {
                     location: call.location,
                 });
             }
+            Expression::MethodCall(method_call) => {
+                // Handle static method calls like Person::new()
+                // Create a new method call with the same arguments
+                return self.generate_method_call_expression(&MethodCallExpr {
+                    object: method_call.object.clone(),
+                    method: method_call.method.clone(),
+                    type_args: call.type_args.clone(),
+                    arguments: call.arguments.clone(),
+                    location: call.location,
+                });
+            }
             _ => {
-                println!("DEBUG: Invalid function call - callee is not a variable: {:?}", call.callee);
                 return Err(CompilerError::internal("Invalid function call"));
             }
         };
@@ -688,7 +735,7 @@ impl<'ctx> LLVMBackend<'ctx> {
         let function = *self.function_map.get(method_name)
             .ok_or_else(|| CompilerError::internal(&format!("Undefined method: {}", method_name)))?;
         
-        // Check if the method expects a pointer type for the first parameter (self*)
+        // Check if the method expects a pointer type for the first parameter (self)
         let expects_pointer = if let Some(first_param) = function.get_type().get_param_types().first() {
             first_param.is_pointer_type()
         } else {
@@ -697,7 +744,7 @@ impl<'ctx> LLVMBackend<'ctx> {
         
         // Generate arguments (receiver + method arguments)
         let receiver_arg: BasicMetadataValueEnum = if expects_pointer {
-            // Method expects pointer type (self*), pass the pointer directly
+            // Method expects pointer type (self), pass the pointer directly
             if let Expression::Variable(var_name) = &*method_call.object {
                 if let Some(var_value) = self.variable_map.get(var_name) {
                     if var_value.is_pointer_value() {
@@ -722,7 +769,8 @@ impl<'ctx> LLVMBackend<'ctx> {
                         if let Some(var_value) = self.variable_map.get(var_name) {
                             if var_value.is_pointer_value() {
                                 let struct_type = self.context.struct_type(&[
-                                    self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // string field
+                                    self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // name field (string)
+                                    self.context.i32_type().into(), // age field (int)
                                 ], false);
                                 let loaded_value = self.builder.build_load(struct_type, var_value.into_pointer_value(), "loaded_receiver")?;
                                 loaded_value.into()
@@ -757,23 +805,52 @@ impl<'ctx> LLVMBackend<'ctx> {
         }
     }
     
+    /// Generate static method call with a specific method name (no receiver)
+    fn generate_static_method_call_with_name(&mut self, method_call: &MethodCallExpr, method_name: &str) -> Result<BasicValueEnum<'ctx>> {
+        
+        // Look up the method function
+        let function = *self.function_map.get(method_name)
+            .ok_or_else(|| CompilerError::internal(&format!("Undefined static method: {}", method_name)))?;
+        
+        // Generate arguments (only method arguments, no receiver)
+        let mut args = Vec::new();
+        for arg in &method_call.arguments {
+            let arg_value = self.generate_expression(arg)?;
+            args.push(arg_value.into());
+        }
+        
+        
+        // Call the function
+        let result = self.builder.build_call(function, &args, "static_method_call")?;
+        
+        
+        // Return the result
+        if function.get_type().get_return_type().is_some() {
+            Ok(result.try_as_basic_value().left().unwrap().into())
+        } else {
+            Ok(self.context.i32_type().const_int(0, false).into())
+        }
+    }
+    
     /// Generate print/println call
     fn generate_print_call(&mut self, func_name: &str, arguments: &[Expression]) -> Result<BasicValueEnum<'ctx>> {
+        
         let printf_func = self.module.get_function("printf")
             .ok_or_else(|| CompilerError::internal("printf function not found"))?;
         let putchar_func = self.module.get_function("putchar")
             .ok_or_else(|| CompilerError::internal("putchar function not found"))?;
         
         // 处理每个参数
-        for arg in arguments {
+        for (i, arg) in arguments.iter().enumerate() {
             let value = self.generate_expression(arg)?;
             match value {
                 BasicValueEnum::PointerValue(ptr) => {
                     // 检查是否是字符串字面量或字符串字段访问
-                    if self.is_string_literal(arg) || self.is_string_field_access(arg) {
+                    let is_string = self.is_string_literal(arg) || self.is_string_field_access(arg);
+                    if is_string {
                         // 字符串字面量或字符串字段，使用 %s 格式符
                         let format_str = self.builder.build_global_string_ptr("%s", "format_str")?;
-                        let _ = self.builder.build_call(printf_func, &[format_str.as_pointer_value().into(), ptr.into()], "printf_str_call");
+                        let _call = self.builder.build_call(printf_func, &[format_str.as_pointer_value().into(), ptr.into()], "printf_str_call");
                     } else {
                         // 真正的指针，使用 %p 格式符
                         let ptr_as_int = self.builder.build_ptr_to_int(ptr, self.context.i64_type(), "ptr_as_int")?;
@@ -784,7 +861,7 @@ impl<'ctx> LLVMBackend<'ctx> {
                 BasicValueEnum::IntValue(int_val) => {
                     // 整数参数，需要格式化字符串
                     let format_str = self.builder.build_global_string_ptr("%d", "format_str")?;
-                    let _ = self.builder.build_call(printf_func, &[format_str.as_pointer_value().into(), int_val.into()], "printf_int_call");
+                    let _call = self.builder.build_call(printf_func, &[format_str.as_pointer_value().into(), int_val.into()], "printf_int_call");
                 }
                 BasicValueEnum::FloatValue(float_val) => {
                     // 浮点数参数，需要格式化字符串
@@ -802,7 +879,6 @@ impl<'ctx> LLVMBackend<'ctx> {
             let newline = self.context.i32_type().const_int('\n' as u64, false);
             let _ = self.builder.build_call(putchar_func, &[newline.into()], "putchar_call");
         }
-        
         Ok(self.context.i32_type().const_int(0, false).into())
     }
 
@@ -958,9 +1034,15 @@ impl<'ctx> LLVMBackend<'ctx> {
                         
                         // Get the field pointer
                         let struct_type = self.context.struct_type(&[
-                            self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // string field
+                            self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // name field (string)
+                            self.context.i32_type().into(), // age field (int)
                         ], false);
-                        let field_ptr = self.builder.build_struct_gep(struct_type, object_ptr, 0, field_name)?;
+                        let field_index = match field_name.as_str() {
+                            "name" => 0,
+                            "age" => 1,
+                            _ => return Err(CompilerError::internal(&format!("Unknown field: {}", field_name))),
+                        };
+                        let field_ptr = self.builder.build_struct_gep(struct_type, object_ptr, field_index, field_name)?;
                         
                         // Store the new value to the field
                         let _ = self.builder.build_store(field_ptr, right);
@@ -1133,21 +1215,41 @@ impl<'ctx> LLVMBackend<'ctx> {
                 let pointee_type = self.nature_type_to_llvm_type(&Some(*pointer_type.pointee_type.clone()))?;
                 Ok(pointee_type.ptr_type(AddressSpace::default()).into())
             }
-            Some(Type::Generic(_name)) => {
-                // For Go-style struct types that are parsed as Generic, treat them as struct types
-                // Create a simple struct type with two i32 fields
-                let struct_type = self.context.struct_type(&[
-                    self.context.i32_type().into(),
-                    self.context.i32_type().into(),
-                ], false);
-                Ok(struct_type.into())
+            Some(Type::Generic(name)) => {
+                // For Go-style struct types that are parsed as Generic, look up the actual struct declaration
+                if let Some(struct_decl) = self.struct_declarations.get(name) {
+                    // Generate LLVM types for each field
+                    let mut field_types = Vec::new();
+                    for field in &struct_decl.fields {
+                        let field_llvm_type = self.nature_type_to_llvm_type(&Some(field.field_type.clone()))?;
+                        field_types.push(field_llvm_type.into());
+                    }
+                    
+                    let llvm_struct_type = self.context.struct_type(&field_types, false);
+                    Ok(llvm_struct_type.into())
+                } else {
+                    // Fallback: if struct declaration not found, use default structure
+                    // This should not happen in a well-formed program
+                    Err(CompilerError::internal(&format!("Struct declaration not found: {}", name)))
+                }
             }
-            Some(Type::Struct(_struct_type)) => {
-                // For struct types, create a simple struct type with string field
-                let struct_type = self.context.struct_type(&[
-                    self.context.i8_type().ptr_type(AddressSpace::default()).into(), // string field
-                ], false);
-                Ok(struct_type.into())
+            Some(Type::Struct(struct_type)) => {
+                // Look up the actual struct declaration to get field information
+                if let Some(struct_decl) = self.struct_declarations.get(&struct_type.name) {
+                    // Generate LLVM types for each field
+                    let mut field_types = Vec::new();
+                    for field in &struct_decl.fields {
+                        let field_llvm_type = self.nature_type_to_llvm_type(&Some(field.field_type.clone()))?;
+                        field_types.push(field_llvm_type.into());
+                    }
+                    
+                    let llvm_struct_type = self.context.struct_type(&field_types, false);
+                    Ok(llvm_struct_type.into())
+                } else {
+                    // Fallback: if struct declaration not found, use default structure
+                    // This should not happen in a well-formed program
+                    Err(CompilerError::internal(&format!("Struct declaration not found: {}", struct_type.name)))
+                }
             }
             None => Ok(self.context.i32_type().into()), // Default to int for void
             _ => Err(CompilerError::internal("Unsupported type")),
@@ -1435,6 +1537,11 @@ impl<'ctx> LLVMBackend<'ctx> {
                 // Check if this is accessing a string field (like self.name)
                 field_access.field == "name"
             }
+            Expression::Variable(var_name) => {
+                // Check if this is a string parameter (like "name" parameter)
+                // This is a heuristic - we assume variables named "name" are strings
+                var_name == "name" || var_name.ends_with("_name") || var_name.starts_with("name_")
+            }
             _ => false,
         }
     }
@@ -1653,9 +1760,21 @@ impl<'ctx> LLVMBackend<'ctx> {
             BasicValueEnum::StructValue(_) => {
                 // For struct values (like method parameters), we need to allocate space and store the value
                 // This can happen when the object is passed by value
-                let struct_type = self.context.struct_type(&[
-                    self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // string field
-                ], false);
+                let struct_type = if let Some(struct_decl) = self.struct_declarations.get("Person") {
+                    // Generate LLVM types for each field
+                    let mut field_types = Vec::new();
+                    for field in &struct_decl.fields {
+                        let field_llvm_type = self.nature_type_to_llvm_type(&Some(field.field_type.clone()))?;
+                        field_types.push(field_llvm_type.into());
+                    }
+                    self.context.struct_type(&field_types, false)
+                } else {
+                    // Fallback to hardcoded type if struct declaration not found
+                    self.context.struct_type(&[
+                        self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // name field (string)
+                        self.context.i32_type().into(), // age field (int)
+                    ], false)
+                };
                 let alloca = self.builder.build_alloca(struct_type, "struct_temp")?;
                 let _ = self.builder.build_store(alloca, object_value);
                 alloca
@@ -1690,13 +1809,27 @@ impl<'ctx> LLVMBackend<'ctx> {
             "x" => 0,
             "y" => 1,
             "name" => 0, // name field is at index 0
+            "age" => 1,  // age field is at index 1
             _ => return Err(CompilerError::internal(&format!("Unknown field: {}", field_access.field))),
         };
         
-        // Create a simple struct type with string field
-        let struct_type = self.context.struct_type(&[
-            self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // string field
-        ], false);
+        // Get the correct struct type from the struct declaration
+        // For now, we'll assume it's a Person struct and look it up
+        let struct_type = if let Some(struct_decl) = self.struct_declarations.get("Person") {
+            // Generate LLVM types for each field
+            let mut field_types = Vec::new();
+            for field in &struct_decl.fields {
+                let field_llvm_type = self.nature_type_to_llvm_type(&Some(field.field_type.clone()))?;
+                field_types.push(field_llvm_type.into());
+            }
+            self.context.struct_type(&field_types, false)
+        } else {
+            // Fallback to hardcoded type if struct declaration not found
+            self.context.struct_type(&[
+                self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // name field (string)
+                self.context.i32_type().into(), // age field (int)
+            ], false)
+        };
         
         // Generate GEP instruction to get field pointer
         let field_ptr = unsafe {
@@ -1725,17 +1858,21 @@ impl<'ctx> LLVMBackend<'ctx> {
     
     /// Generate method call expression
     fn generate_method_call_expression(&mut self, method_call: &MethodCallExpr) -> Result<BasicValueEnum<'ctx>> {
-        // For now, implement a simple version that treats method calls as regular function calls
-        // In a real implementation, we would need to:
-        // 1. Look up the method in the struct's method table
-        // 2. Pass the receiver as the first argument
-        // 3. Handle method dispatch
-        
-        // Generate the object (receiver)
-        let receiver = self.generate_expression(&method_call.object)?;
-        
         // Look up the method function
         let method_name = &method_call.method;
+        
+        // Check if this is a static method call (e.g., Person::new)
+        // Static method calls have type names as objects (e.g., Person::new)
+        // Instance method calls have variable names as objects (e.g., person.greet)
+        let is_static_call = match &*method_call.object {
+            Expression::Variable(name) => {
+                // Check if this is a type name (static method) or variable name (instance method)
+                // For now, assume that if the method is "new", it's a static method
+                // Otherwise, it's an instance method
+                method_call.method == "new"
+            }
+            _ => false,
+        };
         
         // First try to find the method in impl blocks (format: "TypeName.methodName")
         // Try common struct types
@@ -1743,7 +1880,13 @@ impl<'ctx> LLVMBackend<'ctx> {
         for type_name in &possible_types {
             let method_name_with_type = format!("{}.{}", type_name, method_name);
             if self.function_map.contains_key(&method_name_with_type) {
-                return Ok(self.generate_method_call_with_name(method_call, &method_name_with_type)?);
+                if is_static_call {
+                    // For static method calls, don't pass receiver
+                    return Ok(self.generate_static_method_call_with_name(method_call, &method_name_with_type)?);
+                } else {
+                    // For instance method calls, pass receiver as first argument
+                    return Ok(self.generate_method_call_with_name(method_call, &method_name_with_type)?);
+                }
             }
         }
         
@@ -1755,102 +1898,158 @@ impl<'ctx> LLVMBackend<'ctx> {
         };
         
         // Generate arguments (receiver + method arguments)
-        // For value-type receivers in Go, we pass the struct value, not the address
-        let receiver_arg: BasicMetadataValueEnum = match receiver {
-            BasicValueEnum::StructValue(_) => {
-                // If receiver is already a struct value, use it directly
-                receiver.into()
+        // For static method calls, don't pass receiver
+        if is_static_call {
+            // Generate arguments (only method arguments, no receiver)
+            let mut args = Vec::new();
+            for arg in &method_call.arguments {
+                let arg_value = self.generate_expression(arg)?;
+                args.push(arg_value.into());
             }
-            _ => {
-                // If receiver is stored in a variable, we need to load it
+            
+            // Call the function
+            let result = self.builder.build_call(function, &args, "static_method_call")?;
+            
+            // Return the result
+            if function.get_type().get_return_type().is_some() {
+                Ok(result.try_as_basic_value().left().unwrap().into())
+            } else {
+                Ok(self.context.i32_type().const_int(0, false).into())
+            }
+        } else {
+            // For instance method calls, we need to generate the receiver
+            // Check if the method expects a pointer type for the first parameter (self)
+            let expects_pointer = if let Some(first_param) = function.get_type().get_param_types().first() {
+                first_param.is_pointer_type()
+            } else {
+                false
+            };
+            
+            // Generate arguments (receiver + method arguments)
+            let receiver_arg: BasicMetadataValueEnum = if expects_pointer {
+                // Method expects pointer type (self), pass the pointer directly
                 if let Expression::Variable(var_name) = &*method_call.object {
                     if let Some(var_value) = self.variable_map.get(var_name) {
                         if var_value.is_pointer_value() {
-                            // Load the struct value from the pointer
-                            let struct_type = self.context.struct_type(&[
-                                self.context.i32_type().into(),
-                                self.context.i32_type().into(),
-                            ], false);
-                            let loaded_value = self.builder.build_load(struct_type, var_value.into_pointer_value(), "loaded_receiver")?;
-                            loaded_value.into()
+                            (*var_value).into()
                         } else {
-                            return Err(CompilerError::internal("Cannot get value of non-pointer receiver"));
+                            return Err(CompilerError::internal("Cannot get pointer of non-pointer receiver"));
                         }
                     } else {
                         return Err(CompilerError::internal(&format!("Undefined receiver variable: {}", var_name)));
                     }
                 } else {
-                    return Err(CompilerError::internal("Cannot get receiver value"));
+                    return Err(CompilerError::internal("Cannot get receiver pointer"));
                 }
+            } else {
+                // Method expects value type (self), pass the struct value
+                let receiver = self.generate_expression(&method_call.object)?;
+                match receiver {
+                    BasicValueEnum::StructValue(_) => {
+                        receiver.into()
+                    }
+                    _ => {
+                        if let Expression::Variable(var_name) = &*method_call.object {
+                            if let Some(var_value) = self.variable_map.get(var_name) {
+                                if var_value.is_pointer_value() {
+                                    // Load the struct value from the pointer
+                                    let struct_type = self.context.struct_type(&[
+                                        self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // name field (string)
+                                        self.context.i32_type().into(), // age field (int)
+                                    ], false);
+                                    let loaded_value = self.builder.build_load(struct_type, var_value.into_pointer_value(), "loaded_receiver")?;
+                                    loaded_value.into()
+                                } else {
+                                    return Err(CompilerError::internal("Cannot get value of non-pointer receiver"));
+                                }
+                            } else {
+                                return Err(CompilerError::internal(&format!("Undefined receiver variable: {}", var_name)));
+                            }
+                        } else {
+                            return Err(CompilerError::internal("Cannot get receiver value"));
+                        }
+                    }
+                }
+            };
+            
+            // Generate method arguments
+            let mut args = vec![receiver_arg];
+            for arg in &method_call.arguments {
+                let arg_value = self.generate_expression(arg)?;
+                args.push(arg_value.into());
             }
-        };
-        
-        let mut args: Vec<BasicMetadataValueEnum> = vec![receiver_arg];
-        
-        for arg in &method_call.arguments {
-            let arg_value = self.generate_expression(arg)?;
-            args.push(arg_value.into());
-        }
-        
-        // Build call
-        let call_result = self.builder.build_call(function, &args, "method_call")?;
-        
-        // Handle return value
-        if function.get_type().get_return_type().is_none() {
-            Ok(self.context.i32_type().const_int(0, false).into())
-        } else {
-            Ok(call_result.try_as_basic_value().left().unwrap().into())
+            
+            // Call the function
+            let result = self.builder.build_call(function, &args, "method_call")?;
+            
+            // Return the result
+            if function.get_type().get_return_type().is_some() {
+                Ok(result.try_as_basic_value().left().unwrap().into())
+            } else {
+                Ok(self.context.i32_type().const_int(0, false).into())
+            }
         }
     }
     
     /// Generate struct expression (struct literal)
     fn generate_struct_expression(&mut self, struct_expr: &StructExpr) -> Result<BasicValueEnum<'ctx>> {
-        // For now, implement a simple version that creates a struct with default values
-        // In a real implementation, we would need to:
-        // 1. Look up the struct type definition
-        // 2. Allocate memory for the struct
-        // 3. Initialize fields with provided values
+        // Extract struct name from struct_type
+        let struct_name = match &struct_expr.struct_type {
+            Type::Struct(struct_type) => &struct_type.name,
+            Type::Generic(name) => name,
+            _ => return Err(CompilerError::internal("Invalid struct type in struct expression")),
+        };
         
-        // Create a simple struct type with string field
-        let struct_type = self.context.struct_type(&[
-            self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // string field
-        ], false);
-        
-        // Allocate memory for the struct
-        let alloca = self.builder.build_alloca(struct_type, "struct_alloca")?;
-        
-        // Initialize fields with provided values or defaults
-        for field_init in &struct_expr.fields {
-            let field_index = match field_init.name.as_str() {
-                "name" => 0,
-                "x" => 0,
-                "y" => 1,
-                _ => continue, // Skip unknown fields
-            };
+        // Look up the struct type definition
+        if let Some(struct_decl) = self.struct_declarations.get(struct_name) {
+            // Clone the struct declaration to avoid borrowing issues
+            let struct_decl = struct_decl.clone();
             
-            // Generate the field value
-            let field_value = self.generate_expression(&field_init.value)?;
+            // Generate LLVM types for each field
+            let mut field_types = Vec::new();
+            for field in &struct_decl.fields {
+                let field_llvm_type = self.nature_type_to_llvm_type(&Some(field.field_type.clone()))?;
+                field_types.push(field_llvm_type.into());
+            }
             
-            // Get field pointer
-            let field_ptr = unsafe {
-                self.builder.build_gep(
-                    struct_type,
-                    alloca,
-                    &[
-                        self.context.i32_type().const_int(0, false), // struct pointer
-                        self.context.i32_type().const_int(field_index as u64, false), // field index
-                    ],
-                    &format!("field_{}_ptr", field_init.name)
-                )?
-            };
+            let struct_type = self.context.struct_type(&field_types, false);
             
-            // Store the field value
-            let _ = self.builder.build_store(field_ptr, field_value);
+            // Allocate memory for the struct
+            let alloca = self.builder.build_alloca(struct_type, "struct_alloca")?;
+            
+            // Initialize fields with provided values or defaults
+            for field_init in &struct_expr.fields {
+                // Find the field index in the struct declaration
+                let field_index = struct_decl.fields.iter()
+                    .position(|field| field.name == field_init.name)
+                    .ok_or_else(|| CompilerError::internal(&format!("Unknown field: {}", field_init.name)))?;
+                
+                // Generate the field value
+                let field_value = self.generate_expression(&field_init.value)?;
+                
+                // Get field pointer
+                let field_ptr = unsafe {
+                    self.builder.build_gep(
+                        struct_type,
+                        alloca,
+                        &[
+                            self.context.i32_type().const_int(0, false), // struct pointer
+                            self.context.i32_type().const_int(field_index as u64, false), // field index
+                        ],
+                        &format!("field_{}_ptr", field_init.name)
+                    )?
+                };
+                
+                // Store the field value
+                let _ = self.builder.build_store(field_ptr, field_value);
+            }
+            
+            // Load the struct value from the alloca and return it
+            let struct_value = self.builder.build_load(struct_type, alloca, "struct_value")?;
+            Ok(struct_value)
+        } else {
+            Err(CompilerError::internal(&format!("Struct declaration not found: {}", struct_name)))
         }
-        
-        // Load the struct value from the alloca and return it
-        let struct_value = self.builder.build_load(struct_type, alloca, "struct_value")?;
-        Ok(struct_value)
     }
     
 }

@@ -400,9 +400,63 @@ impl TypeInference {
         // Infer object type
         let _object_type = self.infer_expression(&method_call.object, env)?;
         
-        // TODO: Look up method in object type
-        // For now, return void
-        Ok(Type::Basic(crate::ast::types::BasicType::Void))
+        // Look up method in function environment
+        if let Some(function_type) = env.lookup_function(&method_call.method) {
+            // Check argument count
+            if method_call.arguments.len() != function_type.parameter_types.len() {
+                return Err(CompilerError::type_error(
+                    method_call.location.line,
+                    method_call.location.column,
+                    format!("Expected {} arguments, got {}", function_type.parameter_types.len(), method_call.arguments.len()),
+                ));
+            }
+
+            // Clone the function type to avoid borrowing issues
+            let param_types = function_type.parameter_types.clone();
+            let return_type = function_type.return_type.clone();
+
+            // Infer argument types
+            for (arg, param_type) in method_call.arguments.iter().zip(param_types.iter()) {
+                let arg_type = self.infer_expression(arg, env)?;
+                self.add_constraint(&arg_type, &param_type, method_call.location)?;
+            }
+
+            // Return function return type
+            Ok(return_type.unwrap_or(Box::new(Type::Basic(crate::ast::types::BasicType::Void))).as_ref().clone())
+        } else {
+            // If method not found, try to infer from static method call
+            // For static method calls like Person::new, the object is the type name
+            if let Expression::Variable(type_name) = &*method_call.object {
+                // Look for static method in type environment
+                if let Some(_type_def) = env.lookup_type(type_name) {
+                    // For now, assume static methods return the type they belong to
+                    // This is a simplified implementation
+                    if method_call.method == "new" {
+                        // Constructor returns the type it belongs to
+                        Ok(Type::Struct(StructType {
+                            name: type_name.clone(),
+                            type_args: vec![],
+                            location: method_call.location,
+                        }))
+                    } else {
+                        // Other static methods return void for now
+                        Ok(Type::Basic(crate::ast::types::BasicType::Void))
+                    }
+                } else {
+                    Err(CompilerError::type_error(
+                        method_call.location.line,
+                        method_call.location.column,
+                        format!("Unknown type: {}", type_name),
+                    ))
+                }
+            } else {
+                Err(CompilerError::type_error(
+                    method_call.location.line,
+                    method_call.location.column,
+                    format!("Unknown method: {}", method_call.method),
+                ))
+            }
+        }
     }
 
     /// Infer types in a binary expression

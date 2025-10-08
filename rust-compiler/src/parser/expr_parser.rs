@@ -369,7 +369,68 @@ fn parse_postfix(parser: &mut Parser) -> Result<Option<Expression>> {
     let mut expr = parse_primary(parser)?;
     
     while let Some(expr) = &mut expr {
-        if parser.consume(&Token::LeftParen)? {
+        if parser.consume(&Token::ColonColon)? {
+            // Method call or static method call (e.g., Person::new)
+            let method_name = match parser.peek().map(|t| &t.token) {
+                Some(Token::Identifier(name)) => {
+                    let name = name.clone();
+                    parser.advance()?;
+                    name
+                }
+                Some(Token::New) => {
+                    parser.advance()?;
+                    "new".to_string()
+                }
+                _ => {
+                    return Err(CompilerError::syntax(
+                        parser.current_location().line,
+                        parser.current_location().column,
+                        "Expected method name after '::'",
+                    ));
+                }
+            };
+            
+            // Parse method call arguments
+            if parser.consume(&Token::LeftParen)? {
+                let mut arguments = Vec::new();
+                
+                if !parser.check(&Token::RightParen) {
+                    loop {
+                        if let Some(arg) = parse_expression(parser)? {
+                            arguments.push(arg);
+                        }
+                        
+                        if !parser.consume(&Token::Comma)? {
+                            break;
+                        }
+                    }
+                }
+                
+                parser.expect(&Token::RightParen)?;
+                
+                *expr = Expression::Call(CallExpr {
+                    callee: Box::new(Expression::MethodCall(MethodCallExpr {
+                        object: Box::new(expr.clone()),
+                        method: method_name,
+                        type_args: vec![], // TODO: Parse type arguments
+                        arguments: arguments.clone(),
+                        location: parser.current_location(),
+                    })),
+                    type_args: vec![], // TODO: Parse type arguments
+                    arguments,
+                    location: parser.current_location(),
+                });
+            } else {
+                // Just a method reference without call
+                *expr = Expression::MethodCall(MethodCallExpr {
+                    object: Box::new(expr.clone()),
+                    method: method_name,
+                    type_args: vec![], // TODO: Parse type arguments
+                    arguments: vec![], // No arguments for method reference
+                    location: parser.current_location(),
+                });
+            }
+        } else if parser.consume(&Token::LeftParen)? {
             // Function call
             let mut arguments = Vec::new();
             

@@ -80,8 +80,29 @@ impl Parser {
                 Ok(Some(Declaration::Constant(const_)))
             }
             Some(Token::Type) => {
-                let type_ = decl_parser::parse_type_declaration(self)?;
-                Ok(Some(Declaration::Type(type_)))
+                // Check if this is a Go-style struct declaration
+                let current_pos = self.current.clone();
+                self.advance()?; // consume 'type'
+                
+                if let Some(Token::Identifier(name)) = self.peek().map(|t| &t.token) {
+                    let struct_name = name.clone();
+                    self.advance()?; // consume identifier
+                    if self.check(&Token::Struct) {
+                        // This is a Go-style struct declaration, parse it as StructDecl
+                        let struct_decl = decl_parser::parse_go_style_struct_declaration_from_current(self, struct_name)?;
+                        Ok(Some(Declaration::Struct(struct_decl)))
+                    } else {
+                        // This is a regular type declaration
+                        self.current = current_pos; // restore position
+                        let decl = decl_parser::parse_type_declaration(self)?;
+                        Ok(Some(Declaration::Type(decl)))
+                    }
+                } else {
+                    // This is a regular type declaration
+                    self.current = current_pos; // restore position
+                    let decl = decl_parser::parse_type_declaration(self)?;
+                    Ok(Some(Declaration::Type(decl)))
+                }
             }
             Some(Token::Struct) => {
                 let struct_ = decl_parser::parse_struct_declaration(self)?;

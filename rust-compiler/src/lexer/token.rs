@@ -310,6 +310,9 @@ pub enum Token {
     /// Colon
     #[token(":")]
     Colon,
+    /// Double colon (namespace separator)
+    #[token("::")]
+    ColonColon,
     /// Dot
     #[token(".")]
     Dot,
@@ -418,6 +421,7 @@ impl fmt::Display for Token {
             Token::Comma => write!(f, ","),
             Token::Semicolon => write!(f, ";"),
             Token::Colon => write!(f, ":"),
+            Token::ColonColon => write!(f, "::"),
             Token::Dot => write!(f, "."),
             Token::Arrow => write!(f, "->"),
             Token::Question => write!(f, "?"),
