@@ -5,12 +5,14 @@ from  fmt import println
 type Person struct {
     name string
     age int
+    address string
+    salery int
 }
 
 impl Person {
     // Regular method
     func greet(self) {
-        println("Hello, I'm ", self.name, ", and I'm ", self.age, "years old")
+        println("Hello, I'm ", self.name, ", and I'm ", self.age, "years old, and I live in ", self.address, ", salery is ", self.salery)
     }
     
     // Method to change age
@@ -26,6 +28,8 @@ func main() {
     var person = Person {
        name: "Alice",
        age: 25, 
+       address: "street 1",
+       salery: 10000,
     }
     person.greet()
     

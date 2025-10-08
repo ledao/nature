@@ -539,17 +539,39 @@ impl<'ctx> LLVMBackend<'ctx> {
                 
                 // Get the field pointer
                 let field_ptr = if object_value.is_pointer_value() {
-                    // If object is a pointer (like self), we can directly access the field
-                    let struct_type = self.context.struct_type(&[
-                        self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // name field (string)
-                        self.context.i32_type().into(), // age field (int)
-                    ], false);
-                    let field_index = match field_name.as_str() {
-                        "name" => 0,
-                        "age" => 1,
-                        _ => return Err(CompilerError::internal(&format!("Unknown field: {}", field_name))),
+                    // Get the struct type from the struct declaration
+                    let struct_type = if let Some(struct_decl) = self.struct_declarations.get("Person") {
+                        // Generate LLVM types for each field
+                        let mut field_types = Vec::new();
+                        for field in &struct_decl.fields {
+                            let field_llvm_type = self.nature_type_to_llvm_type(&Some(field.field_type.clone()))?;
+                            field_types.push(field_llvm_type.into());
+                        }
+                        self.context.struct_type(&field_types, false)
+                    } else {
+                        // Fallback to hardcoded type if struct declaration not found
+                        self.context.struct_type(&[
+                            self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // name field (string)
+                            self.context.i32_type().into(), // age field (int)
+                        ], false)
                     };
-                    self.builder.build_struct_gep(struct_type, object_value.into_pointer_value(), field_index, field_name)?
+                    
+                    // Get the field index from the struct declaration
+                    let field_index = if let Some(struct_decl) = self.struct_declarations.get("Person") {
+                        // Find the field index by name
+                        struct_decl.fields.iter()
+                            .position(|field| field.name == *field_name)
+                            .ok_or_else(|| CompilerError::internal(&format!("Unknown field: {}", field_name)))?
+                    } else {
+                        // Fallback to hardcoded mapping if struct declaration not found
+                        match field_name.as_str() {
+                            "name" => 0,
+                            "age" => 1,
+                            _ => return Err(CompilerError::internal(&format!("Unknown field: {}", field_name))),
+                        }
+                    };
+                    
+                    self.builder.build_struct_gep(struct_type, object_value.into_pointer_value(), field_index as u32, field_name)?
                 } else {
                     return Err(CompilerError::internal("Field access on non-pointer object not supported"));
                 };
@@ -1033,16 +1055,36 @@ impl<'ctx> LLVMBackend<'ctx> {
                         };
                         
                         // Get the field pointer
-                        let struct_type = self.context.struct_type(&[
-                            self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // name field (string)
-                            self.context.i32_type().into(), // age field (int)
-                        ], false);
-                        let field_index = match field_name.as_str() {
-                            "name" => 0,
-                            "age" => 1,
-                            _ => return Err(CompilerError::internal(&format!("Unknown field: {}", field_name))),
+                        let struct_type = if let Some(struct_decl) = self.struct_declarations.get("Person") {
+                            // Generate LLVM types for each field
+                            let mut field_types = Vec::new();
+                            for field in &struct_decl.fields {
+                                let field_llvm_type = self.nature_type_to_llvm_type(&Some(field.field_type.clone()))?;
+                                field_types.push(field_llvm_type.into());
+                            }
+                            self.context.struct_type(&field_types, false)
+                        } else {
+                            // Fallback to hardcoded type if struct declaration not found
+                            self.context.struct_type(&[
+                                self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into(), // name field (string)
+                                self.context.i32_type().into(), // age field (int)
+                            ], false)
                         };
-                        let field_ptr = self.builder.build_struct_gep(struct_type, object_ptr, field_index, field_name)?;
+                        
+                        let field_index = if let Some(struct_decl) = self.struct_declarations.get("Person") {
+                            // Find the field index by name
+                            struct_decl.fields.iter()
+                                .position(|field| field.name == *field_name)
+                                .ok_or_else(|| CompilerError::internal(&format!("Unknown field: {}", field_name)))?
+                        } else {
+                            // Fallback to hardcoded mapping if struct declaration not found
+                            match field_name.as_str() {
+                                "name" => 0,
+                                "age" => 1,
+                                _ => return Err(CompilerError::internal(&format!("Unknown field: {}", field_name))),
+                            }
+                        };
+                        let field_ptr = self.builder.build_struct_gep(struct_type, object_ptr, field_index as u32, field_name)?;
                         
                         // Store the new value to the field
                         let _ = self.builder.build_store(field_ptr, right);
@@ -1534,8 +1576,18 @@ impl<'ctx> LLVMBackend<'ctx> {
     fn is_string_field_access(&self, expr: &Expression) -> bool {
         match expr {
             Expression::FieldAccess(field_access) => {
-                // Check if this is accessing a string field (like self.name)
-                field_access.field == "name"
+                // Check if this is accessing a string field by looking up the struct declaration
+                if let Some(struct_decl) = self.struct_declarations.get("Person") {
+                    // Find the field and check if it's a string type
+                    if let Some(field) = struct_decl.fields.iter().find(|field| field.name == field_access.field) {
+                        matches!(field.field_type, crate::ast::types::Type::Basic(crate::ast::types::BasicType::String))
+                    } else {
+                        false
+                    }
+                } else {
+                    // Fallback to hardcoded check for known string fields
+                    field_access.field == "name" || field_access.field == "address"
+                }
             }
             Expression::Variable(var_name) => {
                 // Check if this is a string parameter (like "name" parameter)
@@ -1804,13 +1856,21 @@ impl<'ctx> LLVMBackend<'ctx> {
         // 2. Find the field index by name
         // 3. Generate the appropriate GEP instruction
         
-        // For now, let's assume field "x" is at index 0, field "y" is at index 1, and "name" is at index 0
-        let field_index = match field_access.field.as_str() {
-            "x" => 0,
-            "y" => 1,
-            "name" => 0, // name field is at index 0
-            "age" => 1,  // age field is at index 1
-            _ => return Err(CompilerError::internal(&format!("Unknown field: {}", field_access.field))),
+        // Look up the field index from the struct declaration
+        let field_index = if let Some(struct_decl) = self.struct_declarations.get("Person") {
+            // Find the field index by name
+            struct_decl.fields.iter()
+                .position(|field| field.name == field_access.field)
+                .ok_or_else(|| CompilerError::internal(&format!("Unknown field: {}", field_access.field)))?
+        } else {
+            // Fallback to hardcoded mapping if struct declaration not found
+            match field_access.field.as_str() {
+                "x" => 0,
+                "y" => 1,
+                "name" => 0, // name field is at index 0
+                "age" => 1,  // age field is at index 1
+                _ => return Err(CompilerError::internal(&format!("Unknown field: {}", field_access.field))),
+            }
         };
         
         // Get the correct struct type from the struct declaration
@@ -1845,15 +1905,25 @@ impl<'ctx> LLVMBackend<'ctx> {
         };
         
         // Load the field value
-        if field_access.field == "name" {
-            let field_type = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
-            let field_value = self.builder.build_load(field_type, field_ptr, &field_access.field)?;
-            Ok(field_value)
+        // Get the field type from the struct declaration
+        let field_type = if let Some(struct_decl) = self.struct_declarations.get("Person") {
+            // Find the field type by name
+            if let Some(field) = struct_decl.fields.iter().find(|field| field.name == field_access.field) {
+                self.nature_type_to_llvm_type(&Some(field.field_type.clone()))?
+            } else {
+                return Err(CompilerError::internal(&format!("Unknown field: {}", field_access.field)));
+            }
         } else {
-            let field_type = self.context.i32_type();
-            let field_value = self.builder.build_load(field_type, field_ptr, &field_access.field)?;
-            Ok(field_value)
-        }
+            // Fallback to hardcoded type mapping
+            if field_access.field == "name" {
+                self.context.i8_type().ptr_type(inkwell::AddressSpace::default()).into()
+            } else {
+                self.context.i32_type().into()
+            }
+        };
+        
+        let field_value = self.builder.build_load(field_type, field_ptr, &field_access.field)?;
+        Ok(field_value)
     }
     
     /// Generate method call expression
