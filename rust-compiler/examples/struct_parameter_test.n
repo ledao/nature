@@ -1,0 +1,52 @@
+// Test struct as function parameter
+
+from fmt import println
+
+type Person struct {
+    name string
+    age int
+    city string
+}
+
+impl Person {
+    func display(self) {
+        println("Name:", self.name, "Age:", self.age, "City:", self.city)
+    }
+}
+
+// Function that takes a Person struct as parameter
+func greet_person(person Person) {
+    println("Hello,", person.name, "!")
+    println("You are", person.age, "years old")
+    println("You live in", person.city)
+}
+
+// Function that modifies a Person struct
+func celebrate_birthday(person Person) {
+    person.age = person.age + 1
+    println("Happy birthday! You are now", person.age, "years old")
+}
+
+func main() {
+    println("=== Struct Parameter Test ===")
+    
+    var p = Person {
+        name: "Alice",
+        age: 25,
+        city: "New York",
+    }
+    
+    // Test passing struct as parameter
+    greet_person(p)
+    
+    // Test method call
+    p.display()
+    
+    // Test function that modifies struct
+    celebrate_birthday(p)
+    
+    // Check if the age was actually modified
+    p.display()
+    
+    println("=== End of test ===")
+}

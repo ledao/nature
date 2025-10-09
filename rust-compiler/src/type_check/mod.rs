@@ -69,6 +69,9 @@ impl TypeCheckSystem {
 
     /// Check generic constraints
     fn check_generic_constraints(&mut self, program: &Program) -> Result<()> {
+        // Copy the type environment from type inference to generic checker
+        self.generic_checker.environment = self.type_inference.environment().clone();
+        
         for declaration in &program.declarations {
             self.generic_checker.check_declaration(declaration)?;
         }

@@ -540,7 +540,7 @@ impl<'ctx> LLVMBackend<'ctx> {
                 // Get the field pointer
                 let field_ptr = if object_value.is_pointer_value() {
                     // Get the struct type from the struct declaration
-                    let struct_type = if let Some(struct_decl) = self.struct_declarations.get("Person") {
+                    let struct_type = if let Some(struct_decl) = self.find_struct_by_field(field_name) {
                         // Generate LLVM types for each field
                         let mut field_types = Vec::new();
                         for field in &struct_decl.fields {
@@ -557,7 +557,7 @@ impl<'ctx> LLVMBackend<'ctx> {
                     };
                     
                     // Get the field index from the struct declaration
-                    let field_index = if let Some(struct_decl) = self.struct_declarations.get("Person") {
+                    let field_index = if let Some(struct_decl) = self.find_struct_by_field(field_name) {
                         // Find the field index by name
                         struct_decl.fields.iter()
                             .position(|field| field.name == *field_name)
@@ -1055,7 +1055,7 @@ impl<'ctx> LLVMBackend<'ctx> {
                         };
                         
                         // Get the field pointer
-                        let struct_type = if let Some(struct_decl) = self.struct_declarations.get("Person") {
+                        let struct_type = if let Some(struct_decl) = self.find_struct_by_field(field_name) {
                             // Generate LLVM types for each field
                             let mut field_types = Vec::new();
                             for field in &struct_decl.fields {
@@ -1071,7 +1071,7 @@ impl<'ctx> LLVMBackend<'ctx> {
                             ], false)
                         };
                         
-                        let field_index = if let Some(struct_decl) = self.struct_declarations.get("Person") {
+                        let field_index = if let Some(struct_decl) = self.find_struct_by_field(field_name) {
                             // Find the field index by name
                             struct_decl.fields.iter()
                                 .position(|field| field.name == *field_name)
@@ -1577,7 +1577,7 @@ impl<'ctx> LLVMBackend<'ctx> {
         match expr {
             Expression::FieldAccess(field_access) => {
                 // Check if this is accessing a string field by looking up the struct declaration
-                if let Some(struct_decl) = self.struct_declarations.get("Person") {
+                if let Some(struct_decl) = self.find_struct_by_field(&field_access.field) {
                     // Find the field and check if it's a string type
                     if let Some(field) = struct_decl.fields.iter().find(|field| field.name == field_access.field) {
                         matches!(field.field_type, crate::ast::types::Type::Basic(crate::ast::types::BasicType::String))
@@ -1797,6 +1797,16 @@ impl<'ctx> LLVMBackend<'ctx> {
         Ok(())
     }
     
+    /// Helper function to find struct declaration by field name
+    fn find_struct_by_field(&self, field_name: &str) -> Option<&StructDecl> {
+        for (_, struct_decl) in &self.struct_declarations {
+            if struct_decl.fields.iter().any(|field| field.name == field_name) {
+                return Some(struct_decl);
+            }
+        }
+        None
+    }
+
     /// Generate field access expression
     fn generate_field_access_expression(&mut self, field_access: &FieldAccessExpr) -> Result<BasicValueEnum<'ctx>> {
         // Generate the object expression
@@ -1857,7 +1867,7 @@ impl<'ctx> LLVMBackend<'ctx> {
         // 3. Generate the appropriate GEP instruction
         
         // Look up the field index from the struct declaration
-        let field_index = if let Some(struct_decl) = self.struct_declarations.get("Person") {
+        let field_index = if let Some(struct_decl) = self.find_struct_by_field(&field_access.field) {
             // Find the field index by name
             struct_decl.fields.iter()
                 .position(|field| field.name == field_access.field)
@@ -1874,8 +1884,7 @@ impl<'ctx> LLVMBackend<'ctx> {
         };
         
         // Get the correct struct type from the struct declaration
-        // For now, we'll assume it's a Person struct and look it up
-        let struct_type = if let Some(struct_decl) = self.struct_declarations.get("Person") {
+        let struct_type = if let Some(struct_decl) = self.find_struct_by_field(&field_access.field) {
             // Generate LLVM types for each field
             let mut field_types = Vec::new();
             for field in &struct_decl.fields {
@@ -1906,7 +1915,7 @@ impl<'ctx> LLVMBackend<'ctx> {
         
         // Load the field value
         // Get the field type from the struct declaration
-        let field_type = if let Some(struct_decl) = self.struct_declarations.get("Person") {
+        let field_type = if let Some(struct_decl) = self.find_struct_by_field(&field_access.field) {
             // Find the field type by name
             if let Some(field) = struct_decl.fields.iter().find(|field| field.name == field_access.field) {
                 self.nature_type_to_llvm_type(&Some(field.field_type.clone()))?

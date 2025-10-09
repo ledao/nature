@@ -1,0 +1,58 @@
+// Complex struct test with many fields
+
+from fmt import println
+
+type Employee struct {
+    id int
+    name string
+    age int
+    department string
+    salary int
+    is_manager bool
+    years_experience int
+    email string
+    phone string
+}
+
+impl Employee {
+    func display_info(self) {
+        println("Employee ID:", self.id)
+        println("Name:", self.name)
+        println("Age:", self.age)
+        println("Department:", self.department)
+        println("Salary:", self.salary)
+        println("Is Manager:", self.is_manager)
+        println("Years Experience:", self.years_experience)
+        println("Email:", self.email)
+        println("Phone:", self.phone)
+    }
+    
+    func promote(self) {
+        self.salary = self.salary * 12 / 10
+        self.is_manager = true
+    }
+}
+
+func main() {
+    println("=== Complex Struct Test ===")
+    
+    var emp = Employee {
+        id: 1001,
+        name: "John Doe",
+        age: 30,
+        department: "Engineering",
+        salary: 75000,
+        is_manager: false,
+        years_experience: 5,
+        email: "john.doe@company.com",
+        phone: "+1-555-0123",
+    }
+    
+    emp.display_info()
+    
+    println("\nAfter promotion:")
+    emp.promote()
+    emp.display_info()
+    
+    println("=== End of test ===")
+}

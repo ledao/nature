@@ -80,7 +80,9 @@ impl TypeInference {
 
         // Infer parameter types
         for param in &func.parameters {
-            func_env.bind_variable(param.name.clone(), param.param_type.clone());
+            // Check if the parameter type is a generic that should be resolved to a struct type
+            let resolved_type = self.resolve_type(&param.param_type)?;
+            func_env.bind_variable(param.name.clone(), resolved_type);
         }
 
         // Infer return type
@@ -710,6 +712,35 @@ impl TypeInference {
             location,
         });
         Ok(())
+    }
+
+    /// Resolve a type, converting generic types to their actual definitions if they exist
+    fn resolve_type(&self, type_: &Type) -> Result<Type> {
+        match type_ {
+            Type::Generic(name) => {
+                // Check if this generic type is actually a defined struct type
+                if let Some(defined_type) = self.environment.lookup_type(name) {
+                    // Recursively resolve the defined type in case it contains more generics
+                    self.resolve_type(defined_type)
+                } else {
+                    // It's a true generic type parameter
+                    Ok(type_.clone())
+                }
+            }
+            Type::Struct(struct_type) => {
+                // Resolve type arguments if any
+                let mut resolved_type_args = Vec::new();
+                for type_arg in &struct_type.type_args {
+                    resolved_type_args.push(self.resolve_type(type_arg)?);
+                }
+                Ok(Type::Struct(StructType {
+                    name: struct_type.name.clone(),
+                    type_args: resolved_type_args,
+                    location: struct_type.location,
+                }))
+            }
+            _ => Ok(type_.clone()),
+        }
     }
 
     /// Check if the type inference engine is empty

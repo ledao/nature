@@ -9,7 +9,7 @@ use super::TypeEnvironment;
 /// Generic type checker for Nature language
 pub struct GenericChecker {
     /// Type environment
-    environment: TypeEnvironment,
+    pub environment: TypeEnvironment,
     /// Generic constraints
     constraints: HashMap<String, Vec<Type>>,
     /// Generic instantiations
@@ -514,8 +514,8 @@ impl GenericChecker {
     fn check_type(&mut self, type_: &Type) -> Result<()> {
         match type_ {
             Type::Generic(name) => {
-                // Check if generic parameter is in scope
-                if !self.environment.is_generic(name) {
+                // Check if this is a generic parameter or a defined type
+                if !self.environment.is_generic(name) && !self.environment.lookup_type(name).is_some() {
                     return Err(CompilerError::type_error(
                         0, 0, // TODO: Get actual location
                         format!("Undefined generic type parameter '{}'", name),
